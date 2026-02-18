@@ -56,10 +56,40 @@ seqnames(rowRanges(met_data)) %>% table()                            # No ambigu
 
 #--------------------Methylation data imputation----------
 # Impute missing values with regression based method. See: https://doi.org/10.1186/s12859-020-03592-5
-met_data_imputed <- methyLImp2(met_data,
-                               type = "450K",
-                               groups = colData(met_data)$definition,
-                               BPPARAM = SnowParam(workers = 6, exportglobals = F))
+# I will be separating the data into chunks and doing parallel processing for each chunk since I've had
+# some problems running it. If you are more comfortable and knowledegable, run it in one single chunk 
+
+# Set the basic for running by chunks
+workers <- MulticoreParam(workers = 2)                               # Number of workers
+chunk_size <- 50000                                                  # Chunk size
+outdir <- "Data/methy_chunks"                                        # Directory for chunk output
+dir.create(outdir)                                                   # Create directory
+
+# Creating chunks
+groups <- met_data$definition                                        # Separate data by tumor and control
+total_cpgs <- nrow(met_data)                                         # Total CpG islands
+chunk_start <- seq.int(1, total_cpgs, chunk_size)                    # Create chunks' ranges/sizes
+chunk_end <- pmin(starts + chunk_size - 1, total_cpgs)               # Create the end of the chunks
+
+# Running chunks
+for (i in seq_along(chunk_start)) {                                  # Iterate over each chunk
+  outfile <- file.path(outdir, sprintf("chunk_%02d.rds", i))         # Create a new file with the chunk's imputed data into the out directory
+  if (file.exists(outfile)) {                                        # Skip if the chunk has already been imputed, since it may crash
+    message("Skipping chunk ", i, " (already exists)")
+    next
+  }
+  idx <- chunk_start[i]:chunk_end[i]                                 # Create chunk id by range
+  met_chunk <- met_data[idx, ]                                       # Create chunk
+  message("Running chunk ", i," (", starts[i], ":", ends[i], ")")    # Tell which chunk is running
+  res <- methyLImp2(                                                 # Impute data for chunk
+    met_chunk,
+    type    = "450K",
+    groups  = groups,
+    BPPARAM = workers)
+  saveRDS(res, outfile)                                              # Save output
+  rm(res, met_chunk)                                                 # Remove object from environment as to save space
+  invisible(gc())                                                    # Free memory and avoid printing output
+}
 
 #--------------------B-values to M-values-----------------
 # See https://doi.org/10.1186/1471-2105-11-587 for decision basis
