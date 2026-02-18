@@ -12,4 +12,4 @@ This repository will contain all the work pertaining the Hepatocellular Carcinom
 
 - [mRNA_processing.R](./Scripts/mRNA_processing.R): Pre-process mRNA data.
 - [miRNA_processing.R](./Scripts/miRNA_processing.R): Pre-process miRNA data.
-- [CpG_processing.R](./Scripts/CpGprocessing.R): Pre-process CpG data.
+- [CpG_processing.R](./Scripts/CpG_processing.R): Pre-process CpG data.
