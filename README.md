@@ -13,4 +13,4 @@ This repository will contain all the work pertaining the Hepatocellular Carcinom
 - [mRNA_processing.R](./Scripts/mRNA_processing.R): Pre-process mRNA data.
 - [miRNA_processing.R](./Scripts/miRNA_processing.R): Pre-process miRNA data.
 - [CpG_processing.R](./Scripts/CpG_processing.R): Pre-process CpG data.
-- [Matrices_concatenation.R](./Scripts/Matrices_concatenation.R): Scale, center, normalize, and concatenate each omic data block.
+- [ENET.R](./Scripts/ENET.R): Scale, center, normalize, and perform ENET for each omic data block.
