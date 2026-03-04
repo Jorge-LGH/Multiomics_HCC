@@ -6,6 +6,9 @@ library(SummarizedExperiment)    # Version: 1.48.1
 library(tidyverse)               # Version: 2.0.0
 library(methyLImp2)              # Version: 1.2.0
 library(BiocParallel)            # Version: 1.40.2
+library(sesame)                  # Version: 1.24.0
+library(NOISeq)                  # Version: 2.52.0
+library(sva)                     # Version: 3.54.0
 
 #--------------------Load object--------------------------
 # To understand where this object came from, check the 1_get_data.R script
@@ -69,7 +72,7 @@ dir.create(outdir)                                                   # Create di
 groups <- met_data$definition                                        # Separate data by tumor and control
 total_cpgs <- nrow(met_data)                                         # Total CpG islands
 chunk_start <- seq.int(1, total_cpgs, chunk_size)                    # Create chunks' ranges/sizes
-chunk_end <- pmin(starts + chunk_size - 1, total_cpgs)               # Create the end of the chunks
+chunk_end <- pmin(chunk_start + chunk_size - 1, total_cpgs)          # Create the end of the chunks
 
 # Running chunks
 for (i in seq_along(chunk_start)) {                                  # Iterate over each chunk
@@ -80,7 +83,8 @@ for (i in seq_along(chunk_start)) {                                  # Iterate o
   }
   idx <- chunk_start[i]:chunk_end[i]                                 # Create chunk id by range
   met_chunk <- met_data[idx, ]                                       # Create chunk
-  message("Running chunk ", i," (", starts[i], ":", ends[i], ")")    # Tell which chunk is running
+  message("Running chunk ", i," (", chunk_start[i], ":",             # Tell which chunk is running
+  chunk_end[i], ")")                                                
   res <- methyLImp2(                                                 # Impute data for chunk
     met_chunk,
     type    = "450K",
@@ -91,8 +95,46 @@ for (i in seq_along(chunk_start)) {                                  # Iterate o
   invisible(gc())                                                    # Free memory and avoid printing output
 }
 
+# Load chunks into environment
+path_name <- "Data/methy_chunks/"                                    # Path of chunks
+chunk_list <- list.files(path_name)                                  # List of all chunks
+
+for(i in 1:length(chunk_list)){                                      # Create one variable for each chunk
+  nam <- paste0("chunk_data_",i)                                     # Created variable will be named "chunk_data_"
+  assign(nam, readRDS(paste0(path_name,chunk_list[i])))              # Assign values
+}
+
+chunk_names <- ls(pattern = "chunk_data_")                           # Get all imputed chunks' names
+for(i in 1:length(chunk_names)){                                     # Iterate over every chunk
+  if(i == 1){                                                        # Cretae RangeSummarizedExperiment base
+    met_imputed <- mget(chunk_names[1])[[1]]
+  }else{                                                             # Append all data
+    met_imputed <- rbind(met_imputed, mget(chunk_names[i])[[1]])
+  }
+}
+
+write.table(assay(met_imputed),"Data/met_imputed.tsv",
+            sep=',',row.names=T)                                     # Save object with the combined imputations
+
 #--------------------B-values to M-values-----------------
 # See https://doi.org/10.1186/1471-2105-11-587 for decision basis
+m_values <- BetaValueToMValue(assay(met_imputed))
+write.table(m_values,"Data/m_values.tsv",sep=',',row.names=T)        # Save object with M-values
+
+#--------------------Check batch effect-------------------
+noiseqData <- readData(data = m_values, factor = samples_data)       # Create noiseq object
+myPCA <- dat(noiseqData, type = "PCA", norm = T, logtransf = T)      # Perform PCA to watch for batch effects
+
+# The samples partially aggregate by cancerous and control
+# PC1 explains 29% and PC2 explains 28%
+png("Figures/CpG/cpg_batch_effect.png")                              # Plot batch effect with PCA
+explo.plot(myPCA, factor = "sample_type")
+dev.off()
+
+#--------------------Remove btach effect------------------
+com_mod <- model.matrix(~sample_type, data = samples_data)           # Complete model (adjustment and variable of interest cancer or control)
+nul_mod <- model.matrix(~1, data = samples_data)                     # Null model, only include intercept
+num_la_f <- num.sv(m_values, com_mod, method = "leek")               # Identify number of latent factors to estimate
 
 
 #--------------------Differential methylation-------------
