@@ -2,7 +2,8 @@
 # miRNA, mRNA, and CpG sites. This filtering of data types is based on the ENET and MFA methods.
 
 #-----------------------Load Function------------------------
-source("Scripts/Matrix_mfa.R)
+source("Scripts/Matrix_mfa.R")
+source("Scripts/ENET_filtering_func.R")
 
 #-----------------------Load data----------------------------
 # Load each omic's block data
