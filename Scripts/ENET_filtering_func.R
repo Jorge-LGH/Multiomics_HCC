@@ -1,6 +1,6 @@
 enet_stability_block <- function(Matrix, Definition, alpha_grid, n_repeats, nfolds, threshold) {
   
-  X <- as.matrix(Matrix)                                  # Matrix containing samples (rows) and features (columns)
+  X <- t(as.matrix(Matrix))                               # Matrix containing samples (rows) and features (columns)
   Y <- as.factor(Definition)                              # Definition (Sample groups, must be equal to nrows)
   
   feature_names <- colnames(X)                            # Feature names
@@ -16,7 +16,6 @@ enet_stability_block <- function(Matrix, Definition, alpha_grid, n_repeats, nfol
     best_alpha <- NULL                                    # Make starting alpha
     best_error <- Inf                                     # Make starting error
     best_model <- NULL                                    # Make starting model
-    
     for (a in alpha_grid){                                # Iterate over every alpha value in the selected range
       cv_fit <- cv.glmnet(                                # k-fold cross-validation for glmnet
         X, Y,                                             # Matrix and definition
@@ -25,7 +24,6 @@ enet_stability_block <- function(Matrix, Definition, alpha_grid, n_repeats, nfol
         nfolds = nfolds,                                  # Number of subsets the dataset is divided to train and validate the model
         type.measure = "class")                           # Since is its bionomial
       current_error <- min(cv_fit$cvm)                    # Assign the current mean cross-validated error
-      
       if(current_error < best_error){                     # In case the current error is actually better than the previous one
         best_error <- current_error                       # Set new error if it is better
         best_alpha <- a                                   # Save which alpha value yielded the best error
@@ -33,7 +31,6 @@ enet_stability_block <- function(Matrix, Definition, alpha_grid, n_repeats, nfol
       }
     }
     alpha_record[i] <- best_alpha                         # Signal which was the best alpha
-    
     beta <- coef(best_model, s = "lambda.1se")            # Extract model coefficients from best model
     selected_idx <- which(beta != 0)[-1]                  # Remove intercept
     if(length(selected_idx) > 0){

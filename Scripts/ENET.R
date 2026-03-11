@@ -20,4 +20,14 @@ mir_eigen <- mfa_normalize(mir_data)
 met_eigen <- mfa_normalize(cpg_data)
 
 #-----------------------Elastic Net--------------------------
+# Parameters used by my function
+definition <- samples_data$sample_type                                   # Define groups (Tumor and control)
+grid_def <- seq(0.1, 0.9, by = 0.1)                                      # Range for shrinkage parameter
+reps <- 1000                                                             # Number of iterations
+n_folds <- 5                                                             # Number of subsets the dataset is divided to train and validate the model
+thresh <- 0.8                                                            # Select features that comply with the threshold (percentage of being kept)
 
+# Execute the ENET selection on each omic block
+exp_enet <- enet_stability_block(exp_eigen, definition, grid_def, reps, n_folds, thresh)
+mir_enet <- enet_stability_block(mir_eigen, definition, grid_def, reps, n_folds, thresh)
+met_enet <- enet_stability_block(met_eigen, definition, grid_def, reps, n_folds, thresh)
