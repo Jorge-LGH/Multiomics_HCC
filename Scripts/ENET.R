@@ -7,9 +7,9 @@ source("Scripts/ENET_filtering_func.R")
 
 #-----------------------Load data----------------------------
 # Load each omic's block data
-exp_data <- read.table("Data/norm_exp_data.tsv",sep=',',row.names=T)     # mRNA expression data
-mir_data <- read.table("Data/norm_mir_data.tsv",sep=',',row.names=T)     # miRNA expression data
-cpg_data <- read.table("Data/norm_met_data.tsv",sep=',',row.names=T)     # CpG methylation data
+exp_data <- read.table("Data/norm_exp_data.tsv", sep=',', header=T)     # mRNA expression data
+mir_data <- read.table("Data/norm_mir_data.tsv", sep=',', header=T)     # miRNA expression data
+cpg_data <- read.table("Data/norm_met_data.tsv", sep=',', header=T)     # CpG methylation data
 
 #--------------------Centering and scaling----------------
 # Based on doi: 10.1093/bib/bbx060 to make the impact of components' variable comparable between data levels independently
