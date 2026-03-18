@@ -31,3 +31,14 @@ thresh <- 0.8                                                            # Selec
 exp_enet <- enet_stability_block(exp_eigen, definition, grid_def, reps, n_folds, thresh)
 mir_enet <- enet_stability_block(mir_eigen, definition, grid_def, reps, n_folds, thresh)
 met_enet <- enet_stability_block(met_eigen, definition, grid_def, reps, n_folds, thresh)
+
+# Extract filtered matrices
+exp_filtered <- exp_enet$X_filtered
+mir_filtered <- mir_enet$X_filtered
+met_filtered <- met_enet$X_filtered
+
+# Create list with every filtered omic
+omic_list <- list(
+  CpGs = met_filtered,
+  transcripts = exp_filtered,
+  miRNAs = mir_filtered)
