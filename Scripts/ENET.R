@@ -1,9 +1,12 @@
-# This script is intended as a variable-filter for the selected omic data types. In this case, they are
+}# This script is intended as a variable-filter for the selected omic data types. In this case, they are
 # miRNA, mRNA, and CpG sites. This filtering of data types is based on the ENET and MFA methods.
 
 #-----------------------Load Function------------------------
 source("Scripts/Matrix_mfa.R")
+<<<<<<< Updated upstream
 source("Scripts/ENET_filtering_func.R")
+=======
+>>>>>>> Stashed changes
 
 #-----------------------Load data----------------------------
 # Load each omic's block data
