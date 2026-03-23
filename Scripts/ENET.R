@@ -1,12 +1,9 @@
-}# This script is intended as a variable-filter for the selected omic data types. In this case, they are
+# This script is intended as a variable-filter for the selected omic data types. In this case, they are
 # miRNA, mRNA, and CpG sites. This filtering of data types is based on the ENET and MFA methods.
 
 #-----------------------Load Function------------------------
 source("Scripts/Matrix_mfa.R")
-<<<<<<< Updated upstream
-source("Scripts/ENET_filtering_func.R")
-=======
->>>>>>> Stashed changes
+source("Scripts/ENET_filtering_func.R"
 
 #-----------------------Load data----------------------------
 # Load each omic's block data
@@ -40,8 +37,15 @@ exp_filtered <- exp_enet$X_filtered
 mir_filtered <- mir_enet$X_filtered
 met_filtered <- met_enet$X_filtered
 
+# Save each filtered matrix
+write.table(exp_filtered, "Data/exp_filtered_enet.tsv", sep=",", row.names=T)
+write.table(mir_filtered, "Data/mir_filtered_enet.tsv", sep=",", row.names=T)
+write.table(met_filtered, "Data/met_filtered_enet.tsv", sep=",", row.names=T)
+
 # Create list with every filtered omic
 omic_list <- list(
   CpGs = met_filtered,
   transcripts = exp_filtered,
   miRNAs = mir_filtered)
+
+saveRDS(omic_list, "Data/omic_list.rds")
