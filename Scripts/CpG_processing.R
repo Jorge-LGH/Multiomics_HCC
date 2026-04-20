@@ -57,6 +57,9 @@ met_data <- met_data[which(met_data@rowRanges@                       # 305,328 p
 ## Check for probes with ambiguous chromosome mapping
 seqnames(rowRanges(met_data)) %>% table()                            # No ambiguous mapping apparently (25-11-2025)
 
+## Get the assay into a matrix just to be sure
+met_matrix <- assay(met_data)
+
 #--------------------Methylation data imputation----------
 # Impute missing values with regression based method. See: https://doi.org/10.1186/s12859-020-03592-5
 # I will be separating the data into chunks and doing parallel processing for each chunk since I've had
@@ -70,7 +73,7 @@ dir.create(outdir)                                                   # Create di
 
 # Creating chunks
 groups <- met_data$definition                                        # Separate data by tumor and control
-total_cpgs <- nrow(met_data)                                         # Total CpG islands
+total_cpgs <- nrow(met_matrix)                                       # Total CpG islands
 chunk_start <- seq.int(1, total_cpgs, chunk_size)                    # Create chunks' ranges/sizes
 chunk_end <- pmin(chunk_start + chunk_size - 1, total_cpgs)          # Create the end of the chunks
 
@@ -82,7 +85,7 @@ for (i in seq_along(chunk_start)) {                                  # Iterate o
     next
   }
   idx <- chunk_start[i]:chunk_end[i]                                 # Create chunk id by range
-  met_chunk <- met_data[idx, ]                                       # Create chunk
+  met_chunk <- met_matrix[idx, ]                                     # Create chunk
   message("Running chunk ", i," (", chunk_start[i], ":",             # Tell which chunk is running
   chunk_end[i], ")")                                                
   res <- methyLImp2(                                                 # Impute data for chunk
