@@ -1,14 +1,15 @@
 # This script is meant as the methylation values pre-processing guideline
 
 #--------------------Load libraries-----------------------
-library(TCGAbiolinks)            # Version: 2.36.0
-library(SummarizedExperiment)    # Version: 1.48.1
-library(tidyverse)               # Version: 2.0.0
-library(methyLImp2)              # Version: 1.2.0
-library(BiocParallel)            # Version: 1.40.2
-library(sesame)                  # Version: 1.24.0
-library(NOISeq)                  # Version: 2.52.0
-library(sva)                     # Version: 3.54.0
+library(TCGAbiolinks)                                                # Version: 2.36.0
+library(SummarizedExperiment)                                        # Version: 1.48.1
+library(tidyverse)                                                   # Version: 2.0.0
+library(methyLImp2)                                                  # Version: 1.2.0
+library(BiocParallel)                                                # Version: 1.40.2
+library(sesame)                                                      # Version: 1.24.0
+library(NOISeq)                                                      # Version: 2.52.0
+library(sva)                                                         # Version: 3.54.0
+library(IlluminaHumanMethylation450kanno.ilmn12.hg19)
 
 #--------------------Load object--------------------------
 # To understand where this object came from, check the 1_get_data.R script
@@ -57,23 +58,20 @@ met_data <- met_data[which(met_data@rowRanges@                       # 305,328 p
 ## Check for probes with ambiguous chromosome mapping
 seqnames(rowRanges(met_data)) %>% table()                            # No ambiguous mapping apparently (25-11-2025)
 
-## Get the assay into a matrix just to be sure
-met_matrix <- assay(met_data)
-
 #--------------------Methylation data imputation----------
 # Impute missing values with regression based method. See: https://doi.org/10.1186/s12859-020-03592-5
 # I will be separating the data into chunks and doing parallel processing for each chunk since I've had
 # some problems running it. If you are more comfortable and knowledgeable, run it in one single chunk 
 
 # Set the basic for running by chunks
-workers <- SerialParam()                                             # Number of workers
-chunk_size <- 50000                                                  # Chunk size
+workers <- MulticoreParam(workers = 2)                               # Number of workers
+chunk_size <- 10000                                                  # Chunk size
 outdir <- "Data/methy_chunks"                                        # Directory for chunk output
 dir.create(outdir)                                                   # Create directory
 
 # Creating chunks
 groups <- samples_data$sample_type                                   # Separate data by tumor and control
-total_cpgs <- nrow(met_matrix)                                       # Total CpG islands
+total_cpgs <- nrow(met_data)                                         # Total CpG islands
 chunk_start <- seq.int(1, total_cpgs, chunk_size)                    # Create chunks' ranges/sizes
 chunk_end <- pmin(chunk_start + chunk_size - 1, total_cpgs)          # Create the end of the chunks
 
@@ -85,7 +83,7 @@ for (i in seq_along(chunk_start)) {                                  # Iterate o
     next
   }
   idx <- chunk_start[i]:chunk_end[i]                                 # Create chunk id by range
-  met_chunk <- met_matrix[idx, , drop = F]                           # Create chunk
+  met_chunk <- met_data[idx, , drop = F]                             # Create chunk
   message("Running chunk ", i," (", chunk_start[i], ":",             # Tell which chunk is running
   chunk_end[i], ")")                                                
   res <- methyLImp2(met_chunk,                                       # Impute data for chunk
