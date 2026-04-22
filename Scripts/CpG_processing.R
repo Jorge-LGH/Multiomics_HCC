@@ -63,6 +63,13 @@ seqnames(rowRanges(met_data)) %>% table()                            # No ambigu
 # I will be separating the data into chunks and doing parallel processing for each chunk since I've had
 # some problems running it. If you are more comfortable and knowledgeable, run it in one single chunk 
 
+# Before actually imputing, I will separate the probes that do not have any missing (NA) value to make this faster
+complete_probes <- met_data[which(                                   # 243,900 complete probes (22-04-2026)
+  rowSums(is.na(assay(met_data))) == 0),]
+
+incomplete_probes <- met_data[which(                                 # 61, 428 incomplete probes (22-04-2026)
+  rowSums(is.na(assay(met_data))) != 0),]
+  
 # Set the basic for running by chunks
 workers <- MulticoreParam(workers = 2)                               # Number of workers
 chunk_size <- 10000                                                  # Chunk size
@@ -71,7 +78,7 @@ dir.create(outdir)                                                   # Create di
 
 # Creating chunks
 groups <- samples_data$sample_type                                   # Separate data by tumor and control
-total_cpgs <- nrow(met_data)                                         # Total CpG islands
+total_cpgs <- nrow(incomplete_probes)                                # Total CpG islands
 chunk_start <- seq.int(1, total_cpgs, chunk_size)                    # Create chunks' ranges/sizes
 chunk_end <- pmin(chunk_start + chunk_size - 1, total_cpgs)          # Create the end of the chunks
 
@@ -83,7 +90,7 @@ for (i in seq_along(chunk_start)) {                                  # Iterate o
     next
   }
   idx <- chunk_start[i]:chunk_end[i]                                 # Create chunk id by range
-  met_chunk <- met_data[idx, , drop = F]                             # Create chunk
+  met_chunk <- incomplete_probes[idx, , drop = F]                    # Create chunk
   message("Running chunk ", i," (", chunk_start[i], ":",             # Tell which chunk is running
   chunk_end[i], ")")                                                
   res <- methyLImp2(met_chunk,                                       # Impute data for chunk
