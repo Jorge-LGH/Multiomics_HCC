@@ -72,7 +72,7 @@ incomplete_probes <- met_data[which(                                 # 61, 428 i
   
 # Set the basic for running by chunks
 workers <- MulticoreParam(workers = 2)                               # Number of workers
-chunk_size <- 10000                                                  # Chunk size
+chunk_size <- 13000                                                  # Chunk size
 outdir <- "Data/methy_chunks"                                        # Directory for chunk output
 dir.create(outdir)                                                   # Create directory
 
@@ -83,9 +83,9 @@ chunk_start <- seq.int(1, total_cpgs, chunk_size)                    # Create ch
 chunk_end <- pmin(chunk_start + chunk_size - 1, total_cpgs)          # Create the end of the chunks
 
 # Running chunks
-for (i in seq_along(chunk_start)) {                                  # Iterate over each chunk
+for(i in seq_along(chunk_start)){                                    # Iterate over each chunk
   outfile <- file.path(outdir, sprintf("chunk_%02d.rds", i))         # Create a new file with the chunk's imputed data into the out directory
-  if (file.exists(outfile)) {                                        # Skip if the chunk has already been imputed, since it may crash
+  if(file.exists(outfile)){                                          # Skip if the chunk has already been imputed, since it may crash
     message("Skipping chunk ", i, " (already exists)")
     next
   }
