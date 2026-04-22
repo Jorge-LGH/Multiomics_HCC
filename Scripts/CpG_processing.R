@@ -9,7 +9,7 @@ library(BiocParallel)                                                # Version: 
 library(sesame)                                                      # Version: 1.24.0
 library(NOISeq)                                                      # Version: 2.52.0
 library(sva)                                                         # Version: 3.54.0
-library(IlluminaHumanMethylation450kanno.ilmn12.hg19)
+library(ChAMPdata)
 
 #--------------------Load object--------------------------
 # To understand where this object came from, check the 1_get_data.R script
@@ -82,6 +82,13 @@ total_cpgs <- nrow(incomplete_probes)                                # Total CpG
 chunk_start <- seq.int(1, total_cpgs, chunk_size)                    # Create chunks' ranges/sizes
 chunk_end <- pmin(chunk_start + chunk_size - 1, total_cpgs)          # Create the end of the chunks
 
+# Annotation since there was a problem when subsetting internally by chromosome
+data("hm450.manifest.hg19", package = "ChAMPdata")
+ann <- data.frame(cpg = rownames(hm450.manifest.hg19),
+                  chr = hm450.manifest.hg19$CpG_chrm)
+removed_probes_list <- list()                                        # Will store removed probes just to have some info if needed
+removed_counts <- integer(length(chunk_start))
+
 # Running chunks
 for(i in seq_along(chunk_start)){                                    # Iterate over each chunk
   outfile <- file.path(outdir, sprintf("chunk_%02d.rds", i))         # Create a new file with the chunk's imputed data into the out directory
@@ -92,8 +99,25 @@ for(i in seq_along(chunk_start)){                                    # Iterate o
   idx <- chunk_start[i]:chunk_end[i]                                 # Create chunk id by range
   met_chunk <- incomplete_probes[idx, , drop = F]                    # Create chunk
   message("Running chunk ", i," (", chunk_start[i], ":",             # Tell which chunk is running
-  chunk_end[i], ")")                                                
-  res <- methyLImp2(met_chunk,                                       # Impute data for chunk
+  chunk_end[i], ")")
+  met_mat <- assay(met_chunk)
+  chunk_anno <- ann[match(rownames(met_mat), ann$cpg), ]
+  valid_match <- !is.na(chunk_anno$chr)
+  
+  chr_counts <- table(chunk_anno$chr[valid_match])
+  valid_chr <- names(chr_counts[chr_counts > 1])
+  keep <- valid_match & (chunk_anno$chr %in% valid_chr)
+
+  removed_probes <- rownames(met_mat)[!keep]
+  removed_probes_list[[i]] <- removed_probes
+  removed_counts[i] <- length(removed_probes)
+
+  met_chunk <- met_chunk[keep, , drop = FALSE]
+  if (nrow(met_chunk) == 0) {
+    message("Skipping chunk ", i, " (no valid probes after filtering)")
+    next
+  }
+  res <- methyLImp2(met_chunk,
                     type    = "450K",
                     groups  = groups,
                     BPPARAM = workers)
@@ -101,6 +125,9 @@ for(i in seq_along(chunk_start)){                                    # Iterate o
   rm(res, met_chunk)                                                 # Remove object from environment as to save space
   invisible(gc())                                                    # Free memory and avoid printing output
 }
+
+total_removed <- sum(removed_counts, na.rm = T)                      # Just check the removed probes
+table(removed_counts)
 
 # Load chunks into environment
 path_name <- "Data/methy_chunks/"                                    # Path of chunks
