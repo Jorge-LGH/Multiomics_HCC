@@ -10,6 +10,7 @@ library(sesame)                                                      # Version: 
 library(NOISeq)                                                      # Version: 2.52.0
 library(sva)                                                         # Version: 3.54.0
 library(ChAMPdata)                                                   # Version: 2.40.0
+library(minfi)
 
 #--------------------Load object--------------------------
 # To understand where this object came from, check the 1_get_data.R script
@@ -155,6 +156,29 @@ met_imputed <- rbind(complete_probes, imputed_combined)
 
 write.table(assay(met_imputed),"Data/met_imputed.tsv",
             sep=',',row.names=T)                                     # Save object with the combined imputations
+
+# Plot beta values for tumor samples and adjacent tissues
+## By each sample
+png("Figures/CpG/cpg_beta_distribution.png", width=1000) 
+densityPlot(assay(met_imputed), sampGroups = met_imputed@colData$sample_type)
+dev.off()
+
+## By sample type
+tumor_beta <- assay(met_imputed[,                                    # Beta values for tumor samples
+  which(met_imputed@colData$sample_type == "Primary Tumor")])
+
+control_beta <- assay(met_imputed[,                                  # Beta values for adjacent tissues
+  which(met_imputed@colData$sample_type != "Primary Tumor")])
+
+beta_matrix <- data.frame(betas = c(as.vector(tumor_beta), 
+                                    as.vector(control_beta)), 
+                          type = c(rep("Tumor", ncol(tumor_beta)), 
+                                   rep("Control", 
+                                       ncol(control_beta))))
+
+png("Figures/CpG/cpg_beta_distribution_type.png", width=1000)
+ggplot(beta_matrix, aes(x = betas, color = type)) + geom_density() + labs(x = "Beta values", y = "Density", colour = "Sample type")
+dev.off()
 
 #--------------------B-values to M-values-----------------
 # See https://doi.org/10.1186/1471-2105-11-587 for decision basis
