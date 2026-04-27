@@ -9,7 +9,7 @@ library(BiocParallel)                                                # Version: 
 library(sesame)                                                      # Version: 1.24.0
 library(NOISeq)                                                      # Version: 2.52.0
 library(sva)                                                         # Version: 3.54.0
-library(ChAMPdata)
+library(ChAMPdata)                                                   # Version: 2.40.0
 
 #--------------------Load object--------------------------
 # To understand where this object came from, check the 1_get_data.R script
@@ -90,28 +90,34 @@ removed_probes_list <- list()                                        # Will stor
 removed_counts <- integer(length(chunk_start))
 
 # Running chunks
+  # Set iterations
 for(i in seq_along(chunk_start)){                                    # Iterate over each chunk
   outfile <- file.path(outdir, sprintf("chunk_%02d.rds", i))         # Create a new file with the chunk's imputed data into the out directory
   if(file.exists(outfile)){                                          # Skip if the chunk has already been imputed, since it may crash
     message("Skipping chunk ", i, " (already exists)")
     next
   }
+  
+  # Set chunks' ids
   idx <- chunk_start[i]:chunk_end[i]                                 # Create chunk id by range
   met_chunk <- incomplete_probes[idx, , drop = F]                    # Create chunk
   message("Running chunk ", i," (", chunk_start[i], ":",             # Tell which chunk is running
   chunk_end[i], ")")
-  met_mat <- assay(met_chunk)
-  chunk_anno <- ann[match(rownames(met_mat), ann$cpg), ]
-  valid_match <- !is.na(chunk_anno$chr)
   
-  chr_counts <- table(chunk_anno$chr[valid_match])
-  valid_chr <- names(chr_counts[chr_counts > 1])
-  keep <- valid_match & (chunk_anno$chr %in% valid_chr)
+  # Extract only valid probes
+  met_mat <- assay(met_chunk)                                        # Extract only data matrix from selected chunk
+  chunk_anno <- ann[match(rownames(met_mat), ann$cpg), ]             # Match probe annotation data with chunk's probes
+  valid_match <- !is.na(chunk_anno$chr)                              # Make sure probe is matched to a chromosome
+  chr_counts <- table(chunk_anno$chr[valid_match])                   # Tell how many probes there are per chromosome per chunk
+  valid_chr <- names(chr_counts[chr_counts > 1])                     # Make sure there are at least 2 robes to actually run
+  keep <- valid_match & (chunk_anno$chr %in% valid_chr)              # Select only fully annotated CpGs
 
+  # Removed probes info
   removed_probes <- rownames(met_mat)[!keep]
   removed_probes_list[[i]] <- removed_probes
   removed_counts[i] <- length(removed_probes)
 
+  # Actual imputation over each chunk
   met_chunk <- met_chunk[keep, , drop = FALSE]
   if (nrow(met_chunk) == 0) {
     message("Skipping chunk ", i, " (no valid probes after filtering)")
@@ -127,25 +133,25 @@ for(i in seq_along(chunk_start)){                                    # Iterate o
 }
 
 total_removed <- sum(removed_counts, na.rm = T)                      # Just check the removed probes
-table(removed_counts)
+table(removed_counts)                                                # Only one probe was removed
 
-# Load chunks into environment
+# Load chunks into environment and concatenate everything
+coldata_ref <- colData(complete_probes)                              # Set metadata reference
 path_name <- "Data/methy_chunks/"                                    # Path of chunks
-chunk_list <- list.files(path_name)                                  # List of all chunks
 
-for(i in 1:length(chunk_list)){                                      # Create one variable for each chunk
-  nam <- paste0("chunk_data_",i)                                     # Created variable will be named "chunk_data_"
-  assign(nam, readRDS(paste0(path_name,chunk_list[i])))              # Assign values
-}
+# Read all chunks into a list
+chunk_files <- list.files(path_name, full.names = TRUE)              # Get every chunk's name
+chunk_list <- lapply(chunk_files, function(f){                       # Read imputed chunks and set reference metadata as main
+  x <- readRDS(f)
+  colData(x) <- coldata_ref
+  x
+})
 
-chunk_names <- ls(pattern = "chunk_data_")                           # Get all imputed chunks' names
-for(i in 1:length(chunk_names)){                                     # Iterate over every chunk
-  if(i == 1){                                                        # Cretae RangeSummarizedExperiment base
-    met_imputed <- mget(chunk_names[1])[[1]]
-  }else{                                                             # Append all data
-    met_imputed <- rbind(met_imputed, mget(chunk_names[i])[[1]])
-  }
-}
+# Combine all imputed chunks (row-wise = probes)
+imputed_combined <- do.call(rbind, chunk_list)
+
+# Merge with complete probes
+met_imputed <- rbind(complete_probes, imputed_combined)
 
 write.table(assay(met_imputed),"Data/met_imputed.tsv",
             sep=',',row.names=T)                                     # Save object with the combined imputations
