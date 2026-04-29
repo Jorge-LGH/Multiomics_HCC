@@ -10,7 +10,7 @@ library(sesame)                                                      # Version: 
 library(NOISeq)                                                      # Version: 2.52.0
 library(sva)                                                         # Version: 3.54.0
 library(ChAMPdata)                                                   # Version: 2.40.0
-library(minfi)
+library(minfi)                                                       # Version: 1.52.1
 
 #--------------------Load object--------------------------
 # To understand where this object came from, check the 1_get_data.R script
@@ -46,18 +46,30 @@ met_data <- met_data[rowSums(met_data@assays@data@listData[[1]],     # 396,413 p
                              na.rm=T) != 0, ,drop = FALSE]
 
 # Removing MASKED probes (Check your object for the MASK status)
-## Remove recommended masked probes
-met_data <- met_data[which(met_data@rowRanges@                       # 340,838 probes remain         
-                             elementMetadata@listData[[
-                               "MASK_rmsk15"]] == F),]
+## This will be removing probes with SNPs and with low uniqueness, meaning they map for multiple sites
+masked_cols <- grep("MASK", names(mcols(rowRanges(met_data))),       # Get the columns that have the MASK information
+                    value = TRUE)
 
-## Remove probes overlapping with common SNP's
-met_data <- met_data[which(met_data@rowRanges@                       # 305,328 probes remain           
-                             elementMetadata@listData[[
-                               "MASK_snp5_common"]] == F),]
+## Remove MASKs
+for(mask in masked_cols){                                            # Remove every single probe that has a True value in any MASK criteria
+  met_data <- met_data[which(                                        # 296,864 probes remain (29-04-2026)
+    mcols(rowRanges(met_data))[[mask]] == F),]
+}
 
-## Check for probes with ambiguous chromosome mapping
-seqnames(rowRanges(met_data)) %>% table()                            # No ambiguous mapping apparently (25-11-2025)
+# Check for probes with ambiguous chromosome mapping
+seqnames(rowRanges(met_data)) %>% table()                            # No ambiguous mapping apparently (29-04-2026)
+
+# Remove probes that only appear on the Y chromosome due to sex unbalance
+met_data <- met_data[which(                                          # 296,664 probes remain (29-04-2026)
+  as.character(seqnames(rowRanges(met_data))) != "chrY"), ]
+
+# Re-run NA and 0 filters
+met_data <- met_data[which(!rowSums(                                 
+  is.na(met_data@assays@data@listData[[1]])) >
+    (ncol(met_data@assays@data@listData[[1]])*0.2)),]
+
+met_data <- met_data[rowSums(met_data@assays@data@listData[[1]],     # 281,239 probes remain
+                             na.rm=T) != 0, ,drop = FALSE]
 
 #--------------------Methylation data imputation----------
 # Impute missing values with regression based method. See: https://doi.org/10.1186/s12859-020-03592-5
@@ -65,15 +77,15 @@ seqnames(rowRanges(met_data)) %>% table()                            # No ambigu
 # some problems running it. If you are more comfortable and knowledgeable, run it in one single chunk 
 
 # Before actually imputing, I will separate the probes that do not have any missing (NA) value to make this faster
-complete_probes <- met_data[which(                                   # 243,900 complete probes (22-04-2026)
+complete_probes <- met_data[which(                                   # 224,656 complete probes (29-04-2026)
   rowSums(is.na(assay(met_data))) == 0),]
 
-incomplete_probes <- met_data[which(                                 # 61, 428 incomplete probes (22-04-2026)
+incomplete_probes <- met_data[which(                                 # 56,583 incomplete probes (29-04-2026)
   rowSums(is.na(assay(met_data))) != 0),]
   
 # Set the basic for running by chunks
 workers <- MulticoreParam(workers = 2)                               # Number of workers
-chunk_size <- 13000                                                  # Chunk size
+chunk_size <- 15000                                                  # Chunk size
 outdir <- "Data/methy_chunks"                                        # Directory for chunk output
 dir.create(outdir)                                                   # Create directory
 
@@ -120,7 +132,7 @@ for(i in seq_along(chunk_start)){                                    # Iterate o
 
   # Actual imputation over each chunk
   met_chunk <- met_chunk[keep, , drop = FALSE]
-  if (nrow(met_chunk) == 0) {
+  if(nrow(met_chunk) == 0){
     message("Skipping chunk ", i, " (no valid probes after filtering)")
     next
   }
@@ -134,7 +146,7 @@ for(i in seq_along(chunk_start)){                                    # Iterate o
 }
 
 total_removed <- sum(removed_counts, na.rm = T)                      # Just check the removed probes
-table(removed_counts)                                                # Only one probe was removed
+table(removed_counts)                                                # No probes were removed (29-04-2026)
 
 # Load chunks into environment and concatenate everything
 coldata_ref <- colData(complete_probes)                              # Set metadata reference
@@ -152,10 +164,10 @@ chunk_list <- lapply(chunk_files, function(f){                       # Read impu
 imputed_combined <- do.call(rbind, chunk_list)
 
 # Merge with complete probes
-met_imputed <- rbind(complete_probes, imputed_combined)
+met_imputed <- rbind(complete_probes, imputed_combined)              # Same 281,239 probes with imputations (29-04-2026)
 
 write.table(assay(met_imputed), "Data/met_imputed.tsv",
-            sep=',',row.names=T)                                     # Save object with the combined imputations
+            sep='/t',row.names=T)                                    # Save object with the combined imputations
 
 # Plot beta values for tumor samples and adjacent tissues
 ## By each sample
@@ -184,24 +196,32 @@ dev.off()
 
 #--------------------B-values to M-values-----------------
 # See https://doi.org/10.1186/1471-2105-11-587 for decision basis
+## Cap beta values to avoid ±Inf in M-value conversion
+beta_mat <- assay(met_imputed)
+beta_mat[beta_mat <= 0] <- 1e-6                                      # Just above 0
+beta_mat[beta_mat >= 1] <- 1 - 1e-6                                  # Just below 1
+
+## Actually converting to M-values
 m_values <- BetaValueToMValue(assay(met_imputed))
-write.table(m_values,"Data/m_values.tsv",sep=',',row.names=T)        # Save object with M-values
 
 #--------------------Check batch effect-------------------
 noiseqData <- readData(data = m_values, factor = samples_data)       # Create noiseq object
-myPCA <- dat(noiseqData, type = "PCA", norm = T, logtransf = T)      # Perform PCA to watch for batch effects
+myPCA <- NOISeq::dat(noiseqData, type ="PCA",norm =T, logtransf =T)  # Perform PCA to watch for batch effects
 
 # The samples partially aggregate by cancerous and control
 # PC1 explains 29% and PC2 explains 28%
-png("Figures/CpG/cpg_batch_effect.png")                              # Plot batch effect with PCA
+png("Figures/CpG/cpg_batch_effect.png", width = 1000)                # Plot batch effect with PCA
 explo.plot(myPCA, factor = "sample_type")
 dev.off()
 
 #--------------------Remove btach effect------------------
 com_mod <- model.matrix(~sample_type, data = samples_data)           # Complete model (adjustment and variable of interest cancer or control)
 nul_mod <- model.matrix(~1, data = samples_data)                     # Null model, only include intercept
-num_la_f <- num.sv(m_values, com_mod, method = "leek")               # Identify number of latent factors to estimate
+num_la_f <- num.sv(m_values, com_mod, method = "leek")               # Identify number of latent factors to estimate (SVs)
+sva_obj <- sva(m_values, com_mod, nul_mod, n.sv = num_la_f)          # Estimate surrogate variables
+clean_m <- cleaningY(m_values, com_mod, sva_obj$sv)                  # Adjust M values by regressing SVs
 
+write.table(clean_m, "Data/clean_m.tsv", sep='/t', row.names=T)      # Save object with clean M-values
 
 #--------------------Differential methylation-------------
 #TCGAanalyze_DMC(met_data,
