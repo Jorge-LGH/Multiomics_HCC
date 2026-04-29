@@ -154,7 +154,7 @@ imputed_combined <- do.call(rbind, chunk_list)
 # Merge with complete probes
 met_imputed <- rbind(complete_probes, imputed_combined)
 
-write.table(assay(met_imputed),"Data/met_imputed.tsv",
+write.table(assay(met_imputed), "Data/met_imputed.tsv",
             sep=',',row.names=T)                                     # Save object with the combined imputations
 
 # Plot beta values for tumor samples and adjacent tissues
@@ -170,14 +170,16 @@ tumor_beta <- assay(met_imputed[,                                    # Beta valu
 control_beta <- assay(met_imputed[,                                  # Beta values for adjacent tissues
   which(met_imputed@colData$sample_type != "Primary Tumor")])
 
-beta_matrix <- data.frame(betas = c(as.vector(tumor_beta), 
+beta_matrix <- data.frame(betas = c(as.vector(tumor_beta),           # Set beta values as matrix
                                     as.vector(control_beta)), 
                           type = c(rep("Tumor", ncol(tumor_beta)), 
                                    rep("Control", 
                                        ncol(control_beta))))
 
 png("Figures/CpG/cpg_beta_distribution_type.png", width=1000)
-ggplot(beta_matrix, aes(x = betas, color = type)) + geom_density() + labs(x = "Beta values", y = "Density", colour = "Sample type")
+ggplot(beta_matrix, aes(x = betas, color = type)) +                  # Actual plot
+  geom_density() + 
+  labs(x = "Beta values", y = "Density", colour = "Sample type")
 dev.off()
 
 #--------------------B-values to M-values-----------------
