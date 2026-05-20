@@ -64,7 +64,7 @@ met_data <- met_data[which(!rowSums(                                 # 281,239 p
 
 #--------------------Methylation data imputation----------
 # Impute missing values with regression based method. See: https://doi.org/10.1186/s12859-020-03592-5
-# I will be separating the data since probes that have values across all samples will have no imputation at all
+# Separating complete probes from incomplete ones will make the process more efficient and less time-consuming
 complete_probes <- met_data[which(                                   # 224,656 complete probes (29-04-2026)
   rowSums(is.na(assay(met_data))) == 0),]
 
@@ -112,30 +112,77 @@ dev.off()
 # See https://doi.org/10.1186/1471-2105-11-587 for decision basis
 ## Cap beta values to avoid ±Inf in M-value conversion
 beta_mat <- assay(met_complete)
-beta_mat[beta_mat <= 0] <- 1e-6                                      # Just above 0
-beta_mat[beta_mat >= 1] <- 1 - 1e-6                                  # Just below 1
+beta_mat[beta_mat == 0] <- 1e-6                                      # Make it so it is basically 0 but not really
+beta_mat[beta_mat == 1] <- 1-(1e-6)                                  # Make it so it is basically 1 but not really
 
 ## Actually converting to M-values
-m_values <- BetaValueToMValue(assay(met_complete))
+m_values <- BetaValueToMValue(beta_mat)
 
 #--------------------Check batch effect-------------------
 noiseqData <- readData(data = m_values, factor = samples_data)       # Create noiseq object
-myPCA <- NOISeq::dat(noiseqData, type ="PCA",norm =T, logtransf =T)  # Perform PCA to watch for batch effects
+myPCA <- NOISeq::dat(noiseqData, type ="PCA",norm =T, logtransf =T)  # Perform PCA to watch for batch effects, already logtransformed so T
 
 # The samples partially aggregate by cancerous and control
-# PC1 explains 29% and PC2 explains 28%
+# PC1 explains 28% and PC2 explains 8%
 png("Figures/CpG/cpg_batch_effect.png", width = 1000)                # Plot batch effect with PCA
 explo.plot(myPCA, factor = "sample_type")
 dev.off()
 
 #--------------------Remove btach effect------------------
-com_mod <- model.matrix(~sample_type, data = samples_data)           # Complete model (adjustment and variable of interest cancer or control)
-nul_mod <- model.matrix(~1, data = samples_data)                     # Null model, only include intercept
-num_la_f <- num.sv(m_values, com_mod, method = "leek")               # Identify number of latent factors to estimate (SVs)
-sva_obj <- sva(m_values, com_mod, nul_mod, n.sv = num_la_f)          # Estimate surrogate variables
-clean_m <- cleaningY(m_values, com_mod, sva_obj$sv)                  # Adjust M values by regressing SVs
+# I'll be using SVA (Surrogate Variable Analysis) to remove unknown batch effects
+com_mod <- model.matrix(~sample_type, data = samples_data)           # Complete model (adjustment and variable of interest cancer or control), it tells which variation we want to keep
+nul_mod <- model.matrix(~1, data = samples_data)                     # Null model, only include intercept. It explains nothing biologically and checks for technical variation
+
+## The number of calculated SV's by the method (both "leek" and "be") were to high and risked overfitting.
+## I used an elbow plot to check for the "optimal" number of SV's compared to the ones returned by the function
+H <- com_mod %*% solve(t(com_mod) %*% com_mod) %*% t(com_mod)        # Compute residual matrix (meaning only technical variation)
+res <- m_values - t(H %*% t(m_values))                               # Remove the technical variation
+svd_res <- svd(res)                                                  # Singular value decomposition
+variance_explained <- svd_res$d^2 / sum(svd_res$d^2) * 100           # How much variance per component
+num_la_f <- num.sv(m_values, com_mod, method = "be")                 # Identify number of latent factors to estimate (SVs) based on the "be" method
+
+x_limit <- max(50, num_la_f + 5)                                     # Set the matrix to plot and check for variance and the calculated SV's 
+scree_df <- data.frame(SV=1:min(x_limit,length(variance_explained)),
+  Var=variance_explained[1:min(x_limit,length(variance_explained))])
+
+## Actual plot
+png("Figures/CpG/cpg_scree_plot.png")
+ggplot(scree_df, aes(x = SV, y = Var)) +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept = num_la_f,
+             linetype = "dashed",
+             color = "red") +
+  annotate("text",
+           x = num_la_f + 1,
+           y = max(scree_df$Var) * 0.95,
+           label = paste0("BE estimate\n(n = ", num_la_f, ")"),
+           color = "red",
+           hjust = 0,
+           size = 3.5) +
+  labs(x = "Surrogate Variable",
+       y = "Variance explained (%)",
+       title = "Scree plot — residual M-value matrix") +
+  theme_classic()
+dev.off()
+
+# The plot shows that the variance explained by the SV's starts stabilizing around 7-10 SV's. Therefore, to make the analysis as
+# robust as possible, instead of using the 40 SV's recommended by the 'num.sv' function, we'll be using 10 SV's. 
+
+## Remove batch effect 
+sva_obj <- sva(m_values, com_mod, nul_mod, n.sv = num_la_f)          # Estimate surrogate variables' values
+clean_m <- cleaningY(y = m_values,                                   # Adjust the m values by regressing the data with the SV's                      
+                     mod = cbind(com_mod, sva_obj$sv),
+                     P   = 2)                
 
 write.table(clean_m, "Data/clean_m.tsv", sep='/t', row.names=T)      # Save object with clean M-values
+
+noiseqData_clean <- readData(data = clean_m, factor = samples_data)  # Plot again after batch effect correction
+myPCA_clean <- NOISeq::dat(noiseqData_clean,type="PCA",
+                           norm=T,logtransf =T)
+png("Figures/CpG/cpg_batch_effect_after_correction.png")
+explo.plot(myPCA_clean, factor = "sample_type")
+dev.off()
 
 #--------------------Differential methylation-------------
 #TCGAanalyze_DMC(met_data,
