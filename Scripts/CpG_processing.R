@@ -11,6 +11,7 @@ library(NOISeq)                                                      # Version: 
 library(sva)                                                         # Version: 3.54.0
 library(ChAMPdata)                                                   # Version: 2.40.0
 library(minfi)                                                       # Version: 1.52.1
+library(jaffelab)                                                    # Version: 0.99.34
 
 #--------------------Load object--------------------------
 # To understand where this object came from, check the 1_get_data.R script
@@ -168,6 +169,7 @@ dev.off()
 
 # The plot shows that the variance explained by the SV's starts stabilizing around 7-10 SV's. Therefore, to make the analysis as
 # robust as possible, instead of using the 40 SV's recommended by the 'num.sv' function, we'll be using 10 SV's. 
+num_la_f <- 10
 
 ## Remove batch effect 
 sva_obj <- sva(m_values, com_mod, nul_mod, n.sv = num_la_f)          # Estimate surrogate variables' values
@@ -185,8 +187,73 @@ explo.plot(myPCA_clean, factor = "sample_type")
 dev.off()
 
 #--------------------Differential methylation-------------
-#TCGAanalyze_DMC(met_data,
-#                groupCol = "definition",
-#                p.cut = 0.5,
-#                title = "Differential methylation",
-#                save.directory = "3_Data/")
+# First, it is important to take the adjacent tissue as the control for the differential anaylsis
+samples_data$sample_type <- relevel(factor(samples_data$sample_type),
+                                    ref = "Solid Tissue Normal")
+
+# Now we have to build a design matrix
+des_matrix <- model.matrix(~sample_type, data = samples_data)
+
+# We fit the linear model to the M-values
+fit <- lmFit(clean_m, des_matrix)
+
+# Empirical Bayes moderation
+fit <- eBayes(fit)
+
+# Check which change between conditions
+results <- decideTests(fit,
+                       coef           = "sample_typePrimary Tumor",
+                       adjust.method  = "BH",
+                       method         = "separate",
+                       lfc            = 1)   
+summary(results)
+#        (Intercept) sample_typePrimary Tumor
+# Down        130798                    30508
+# NotSig       41427                   245819
+# Up          109014                     4912
+
+# Extract results' info
+diff_meth <- topTable(fit,
+                      coef = "sample_typePrimary Tumor",
+                      number = Inf,                                  # Return all probes
+                      adjust.method = "BH")                          # Benjamini-Hochberg FDR
+
+# Change the names for better interpretation
+diff_meth$Methylation <- factor(
+  results[rownames(diff_meth), "sample_typePrimary Tumor"],
+  levels = c(-1, 0, 1),
+  labels = c("Hypomethylated", "Unchanged", "Hypermethylated"))
+
+# Convert m clean values to beta values just for biological interpretation
+beta_corrected <- MValueToBetaValue(clean_m) 
+
+# Get samples types
+tumor_idx <- which(samples_data$sample_type == "Primary Tumor")
+control_idx <- which(samples_data$sample_type == "Solid Tissue Normal")
+
+# Get beta value means for each probe on each condition
+mean_beta_tumor <- rowMeans(beta_corrected[, tumor_idx], na.rm = T)
+mean_beta_control <- rowMeans(beta_corrected[, control_idx], na.rm = T)
+
+# Match probe order to diff_meth before subtracting
+diff_meth$delta_beta <- mean_beta_tumor[rownames(diff_meth)] -
+                        mean_beta_control[rownames(diff_meth)]
+# Volcano plot
+png("Figures/CpG/cpg_diff_meth_volcano.png", width = 1000)
+ggplot(diff_meth, aes(x = delta_beta, y = -log10(adj.P.Val))) +
+  geom_point(aes(color = Methylation), size = 0.8, alpha = 0.6) +
+  scale_color_manual(values = c("Hypermethylated" = "firebrick3",
+                                "Hypomethylated"  = "dodgerblue3",
+                                "Unchanged"       = "gray50")) +
+  geom_hline(yintercept = -log10(0.05),
+             linetype   = "dashed",
+             color      = "black") +
+  geom_vline(xintercept = c(-0.2, 0.2),                             # Delta beta reference lines
+             linetype   = "dashed",                                  # for biological context only
+             color      = "black") +                                 # not used for classification
+  labs(x     = "Delta Beta (Tumor - Normal)",
+       y     = "-log10(adj. p-value)",
+       title = "Differential Methylation") +
+  theme_bw()
+dev.off()
+
