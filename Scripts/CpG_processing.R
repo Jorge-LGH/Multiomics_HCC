@@ -248,7 +248,7 @@ ggplot(diff_meth, aes(x = delta_beta, y = -log10(adj.P.Val))) +
   geom_hline(yintercept = -log10(0.05),
              linetype   = "dashed",
              color      = "black") +
-  geom_vline(xintercept = c(-0.2, 0.2),                             # Delta beta reference lines
+  geom_vline(xintercept = c(-0.2, 0.2),                              # Delta beta reference lines
              linetype   = "dashed",                                  # for biological context only
              color      = "black") +                                 # not used for classification
   labs(x     = "Delta Beta (Tumor - Normal)",
