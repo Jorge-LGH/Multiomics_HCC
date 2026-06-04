@@ -263,14 +263,14 @@ ggplot(diff_res, aes(log2FoldChange, -log(padj,10))) +
   geom_point(aes(color = Expression), size = 1.5, alpha=.7) +
   scale_color_manual(values = c("dodgerblue3", "gray50", "firebrick3")) +
   guides(colour = guide_legend(override.aes = list(size=1.5))) +
-  labs(x = "log_2(FC)", y = "-log10(p-Value)", title = "Differential Expression") + 
+  labs(x = "log_2(FC)", y = "-log10(adj. p-Value)", title = "Differential Expression") + 
   geom_hline(yintercept=0.05, linetype="dashed", color = "black") +
   geom_vline(xintercept=c(-1,1), linetype="dashed", color = "black") +
   theme_bw() +
   geom_label_repel(data=subset(diff_res,rownames(diff_res) %in% 
                                  rownames(top_50_genes[1:10,]) | 
                                  rownames(diff_res) %in% rownames(bot_50_genes[1:10,])),
-                   aes(log2FoldChange, -log(pvalue,10), 
+                   aes(log2FoldChange, -log(padj,10), 
                        label = rownames(subset(diff_res,rownames(diff_res) %in%
                                                  rownames(top_50_genes[1:10,]) |
                                                  rownames(diff_res) %in% rownames(bot_50_genes[1:10,])))),
