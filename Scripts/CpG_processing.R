@@ -12,6 +12,9 @@ library(sva)                                                         # Version: 
 library(ChAMPdata)                                                   # Version: 2.40.0
 library(minfi)                                                       # Version: 1.52.1
 library(jaffelab)                                                    # Version: 0.99.34
+library(limma)
+
+options(bitmapType = "cairo")
 
 #--------------------Load object--------------------------
 # To understand where this object came from, check the 1_get_data.R script
@@ -74,8 +77,8 @@ incomplete_probes <- met_data[which(                                 # 56,583 in
   
 # Actual imputation
 met_imputed <- methyLImp2(incomplete_probes,
-                          type    = "450K",
-                          groups  = samples_data$sample_type,
+                          type = "450K",
+                          groups = samples_data$sample_type,
                           BPPARAM = MulticoreParam(workers = 2))
 
 # Merge with complete probes
@@ -175,9 +178,9 @@ num_la_f <- 10
 sva_obj <- sva(m_values, com_mod, nul_mod, n.sv = num_la_f)          # Estimate surrogate variables' values
 clean_m <- cleaningY(y = m_values,                                   # Adjust the m values by regressing the data with the SV's                      
                      mod = cbind(com_mod, sva_obj$sv),
-                     P   = 2)                
+                     P = 2)                
 
-write.table(clean_m, "Data/clean_m.tsv", sep='/t', row.names=T)      # Save object with clean M-values
+write.table(clean_m, "Data/clean_m.tsv", sep = '\t', row.names = T)  # Save object with clean M-values
 
 noiseqData_clean <- readData(data = clean_m, factor = samples_data)  # Plot again after batch effect correction
 myPCA_clean <- NOISeq::dat(noiseqData_clean,type="PCA",
@@ -202,15 +205,15 @@ fit <- eBayes(fit)
 
 # Check which change between conditions
 results <- decideTests(fit,
-                       coef           = "sample_typePrimary Tumor",
-                       adjust.method  = "BH",
-                       method         = "separate",
-                       lfc            = 1)   
+                       coef = "sample_typePrimary Tumor",
+                       adjust.method = "BH",
+                       method = "separate",
+                       lfc = 1)   
 summary(results)
 #        (Intercept) sample_typePrimary Tumor
-# Down        130798                    30508
-# NotSig       41427                   245819
-# Up          109014                     4912
+# Down        130607                    37614
+# NotSig       40388                   236316
+# Up          110244                     7309
 
 # Extract results' info
 diff_meth <- topTable(fit,
@@ -243,17 +246,19 @@ png("Figures/CpG/cpg_diff_meth_volcano.png", width = 1000)
 ggplot(diff_meth, aes(x = delta_beta, y = -log10(adj.P.Val))) +
   geom_point(aes(color = Methylation), size = 0.8, alpha = 0.6) +
   scale_color_manual(values = c("Hypermethylated" = "firebrick3",
-                                "Hypomethylated"  = "dodgerblue3",
-                                "Unchanged"       = "gray50")) +
+                                "Hypomethylated" = "dodgerblue3",
+                                "Unchanged" = "gray50")) +
   geom_hline(yintercept = -log10(0.05),
-             linetype   = "dashed",
-             color      = "black") +
+             linetype = "dashed",
+             color = "black") +
   geom_vline(xintercept = c(-0.2, 0.2),                              # Delta beta reference lines
-             linetype   = "dashed",                                  # for biological context only
-             color      = "black") +                                 # not used for classification
-  labs(x     = "Delta Beta (Tumor - Normal)",
-       y     = "-log10(adj. p-value)",
+             linetype = "dashed",                                    # for biological context only
+             color = "black") +                                      # not used for classification
+  labs(x = "Delta Beta (Tumor - Normal)",
+       y = "-log10(adj. p-value)",
        title = "Differential Methylation") +
   theme_bw()
 dev.off()
 
+# Saving differential methylation table
+write.table(diff_meth, "Data/diff_meth.tsv", sep='/t', row.names=T)
