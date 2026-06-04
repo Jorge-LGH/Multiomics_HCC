@@ -18,7 +18,3 @@ sub_size <- 0.7                                                    # Data subset
 # Execute penalty fitting
 p_fits <- subset_sgcca(omic_list, penalty_vector, reps, sub_size)  # Every possible penalty combination will be tried on subsets 
 
-# Visualize penalty fits
-penalty_heatmap(p_fits)                                            # Heatmap visualization
-penalty_scatter(p_fits)                                            # Scatter plot visualization
-

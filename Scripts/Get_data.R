@@ -97,7 +97,7 @@ cli_data <- cli_data %>% select(c("bcr_patient_barcode",
                                   "prior_treatment",
                                   "tumor_grade",
                                   "race",
-                                  "age_at_index"
+                                  "age_at_index",
                                   "gender",
                                   "vital_status"))
 

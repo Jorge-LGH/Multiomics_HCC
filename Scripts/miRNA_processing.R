@@ -209,7 +209,7 @@ ggsave("Figures/miRNA/mir_gc_bias_after_norm.png", plot = gc_after)
 ggsave("Figures/miRNA/mir_length_bias_after_norm.png", plot = len_after) 
 
 #--------------------Save expression matrices-------------
-write.table(new_noiseq@assayData$exprs,"Data/norm_mir_data.tsv",sep=',',row.names=T) # Normalized miRNA expression values
+write.table(new_noiseq@assayData$exprs,"Data/norm_mir_data.tsv",sep='\t',row.names=T) # Normalized miRNA expression values
 
 #--------------------Differential expression analysis-----
 # Differential expression analysis performed with DESeq2
@@ -230,8 +230,8 @@ diff_res <- results(diff_anl)
 diff_res <- as.data.frame(diff_res)
 
 ## Assign labels if unchanged, up-regulated or down-regulated 
-diff_res <- diff_res %>% mutate(Expression = case_when(log2FoldChange >= 1 & pvalue <= 0.05 ~ "Up-regulated",
-                                                       log2FoldChange <= -1 & pvalue <= 0.05 ~ "Down-regulated",
+diff_res <- diff_res %>% mutate(Expression = case_when(log2FoldChange >= 1 & padj <= 0.05 ~ "Up-regulated",
+                                                       log2FoldChange <= -1 & padj <= 0.05 ~ "Down-regulated",
                                                        TRUE ~ "Unchanged"))
 # Check for differential expression results
 table(diff_res$Expression)
@@ -249,12 +249,12 @@ top_50_genes <- diff_res[which(
 
 ## Plot itself
 png("Figures/miRNA/mir_diff_plot.png",width=1000)
-ggplot(diff_res, aes(log2FoldChange, -log(pvalue,10))) +
+ggplot(diff_res, aes(log2FoldChange, -log(padj,10))) +
   geom_point(aes(color = Expression), size = 1.5, alpha=.7) +
   scale_color_manual(values = c("dodgerblue3", "gray50", "firebrick3")) +
   guides(colour = guide_legend(override.aes = list(size=1.5))) +
   labs(x = "log_2(FC)", y = "-log10(p-Value)", title = "Differential Expression") + 
-  geom_hline(yintercept=0.30103, linetype="dashed", color = "black") +
+  geom_hline(yintercept=0.05, linetype="dashed", color = "black") +
   geom_vline(xintercept=c(-1,1), linetype="dashed", color = "black") +
   theme_bw() +
   geom_label_repel(data=subset(diff_res,rownames(diff_res) %in% 
@@ -269,4 +269,4 @@ ggplot(diff_res, aes(log2FoldChange, -log(pvalue,10))) +
 dev.off()
 
 #--------------------Save objects-------------------------
-write.table(diff_res,"Data/mir_diff.tsv",sep=',',row.names=T)
+write.table(diff_res,"Data/mir_diff.tsv",sep='\t',row.names=T)

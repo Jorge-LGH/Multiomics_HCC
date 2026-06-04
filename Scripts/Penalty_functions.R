@@ -13,6 +13,7 @@ penalty_fit <- function(omic_list, penalty_vector){
   model_ave <- do.call(rbind, model_structure$AVE$AVE_X)       # AVE retrieved from model
   
   # Count selected features per run
+  features <- model_structure$loadings
   n_features <- sapply(features, function(x) sum(x != 0))      # Total features selected from each omic block
   
   # Understandable summary
@@ -35,7 +36,13 @@ subset_sgcca <- function(omic_list, penalty_vector, n_repeats, subset_size){
     idx <- idx <- sample(seq_len(n_samples),                   # Sample the features based on selected size
                          size = floor(n_samples * subset_size))
     data_subset <- lapply(omic_list, function(X) X[idx, ])     # Extract data subset
-    results[[i]] <- penalty_fit(data_subset, penalty_vector)   # Evaluate penalty fits based on subsets
+    for(j in 1:nrow(penalty_vector)){                          # Try every penalty combination
+      pen <- as.numeric(penalty_vector[j, ])                   # Extract row j as a plain numeric vector
+      result <- penalty_fit(data_subset, pen)                  # Fit SGCCA with this specific penalty combo
+      result$rep <- i                                          # Record which repetition this came from
+      result$combo <- j                                        # Record which penalty combination this was
+      results[[length(results) + 1]] <- result                 # Append to results list
+    }
   }
   
   # Save results

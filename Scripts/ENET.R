@@ -3,13 +3,16 @@
 
 #-----------------------Load Function------------------------
 source("Scripts/Matrix_mfa.R")
-source("Scripts/ENET_filtering_func.R"
+source("Scripts/ENET_filtering_func.R")
 
 #-----------------------Load data----------------------------
 # Load each omic's block data
-exp_data <- read.table("Data/norm_exp_data.tsv", sep=',', header=T)     # mRNA expression data
-mir_data <- read.table("Data/norm_mir_data.tsv", sep=',', header=T)     # miRNA expression data
-cpg_data <- read.table("Data/norm_met_data.tsv", sep=',', header=T)     # CpG methylation data
+exp_data <- read.table("Data/norm_exp_data.tsv", sep='\t', header=T)   # mRNA expression data
+mir_data <- read.table("Data/norm_mir_data.tsv", sep='\t', header=T)   # miRNA expression data
+cpg_data <- read.table("Data/clean_m.tsv", sep='\t', header=T          # CpG methylation data
+
+# Load samples' data
+samples_data <- read.table("Data/samples_data.tsv",header=T,sep='\t')
 
 #--------------------Centering and scaling----------------
 # Based on doi: 10.1093/bib/bbx060 to make the impact of components' variable comparable between data levels independently
@@ -17,7 +20,7 @@ cpg_data <- read.table("Data/norm_met_data.tsv", sep=',', header=T)     # CpG me
 # of the first eigenvalue of the transpose block multiplied by the original block and divided by the number of samples (MFA)
 exp_eigen <- mfa_normalize(exp_data)
 mir_eigen <- mfa_normalize(mir_data)
-met_eigen <- mfa_normalize(cpg_data)
+met_eigen <- mfa_normalize(clean_m)
 
 #-----------------------Elastic Net--------------------------
 # Parameters used by my function

@@ -12,7 +12,7 @@ library(sva)                                                         # Version: 
 library(ChAMPdata)                                                   # Version: 2.40.0
 library(minfi)                                                       # Version: 1.52.1
 library(jaffelab)                                                    # Version: 0.99.34
-library(limma)
+library(limma)                                                       # Version: 3.68.4
 
 options(bitmapType = "cairo")
 
@@ -21,7 +21,7 @@ options(bitmapType = "cairo")
 samples_data <- read.table("Data/samples_data.tsv", header = T, sep='\t')
 
 #--------------------Prepare data-------------------------
-# Get miRNA expression values
+# Get methylation expression values
 met_query <-  GDCquery(project = "TCGA-LIHC",                        # Liver hepatocellular carcinoma project
                        data.category = "DNA Methylation",            # DNA methylation data
                        platform = "Illumina Human Methylation 450",  # CpG detection platform
@@ -85,7 +85,7 @@ met_imputed <- methyLImp2(incomplete_probes,
 met_complete <- rbind(complete_probes, met_imputed)                  # Same 281,239 probes with imputations (29-04-2026)
 
 write.table(assay(met_complete), "Data/met_imputed.tsv",
-            sep='/t',row.names=T)                                    # Save object with the combined imputations
+            sep='\t',row.names=T)                                    # Save object with the combined imputations
 
 # Plot beta values for tumor samples and adjacent tissues
 ## By each sample
@@ -261,4 +261,4 @@ ggplot(diff_meth, aes(x = delta_beta, y = -log10(adj.P.Val))) +
 dev.off()
 
 # Saving differential methylation table
-write.table(diff_meth, "Data/diff_meth.tsv", sep='/t', row.names=T)
+write.table(diff_meth, "Data/diff_meth.tsv", sep='\t', row.names=T)
