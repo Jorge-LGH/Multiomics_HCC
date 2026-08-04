@@ -6,6 +6,8 @@
 library(TCGAbiolinks)            # Version: 2.36.0
 library(SummarizedExperiment)    # Version: 1.48.1
 library(tidyverse)               # Version: 2.0.0
+library(RColorBrewer)
+library(VennDiagram)
 
 #--------------------Query preparation--------------------
 # This section is in charge of making the queries to the TCGA database
@@ -41,7 +43,7 @@ met_res <- getResults(met_query)
 table(exp_res$sample_type) # (371 primary, 3 recurrent, and 50 normal) (08-07-2025)
 
 ## Keep only primary and normal
-exp_res <- exp_res[which(exp_res$sample_type != "Recurrent Tumor"),]
+exp_res <- filter(exp_res, sample_type != "Recurrent Tumor")
 
 ## Extract initial samples' names
 cases <- exp_res$cases
@@ -50,8 +52,19 @@ cases <- exp_res$cases
 cases <- substr(cases, 1, 19)
 
 ## Check how many are of the cases are shared among the three data types
-Barcode <- cases[cases %in% substr(met_res$cases, 1, 19)] %>% 
-  .[. %in% substr(mir_res$cases, 1 ,19)]
+Barcode <- cases[cases %in% substr(met_res$cases, 1, 19) & 
+                   cases %in% substr(mir_res$cases, 1 ,19)]
+
+## Plotting which samples are shared amongst all three data types
+venn.diagram(x = list(cases, substr(met_res$cases, 1, 19), substr(mir_res$cases, 1 ,19)),
+             category.names = c("mRNA", "CpG", "miRNA"),
+             filename = "Figures/samples_venn.png",
+             fill = brewer.pal(3, "Set1"),
+             disable.logging = T,
+             output = T,
+                      lwd = 3,
+                      col = brewer.pal(3, "Set1"))
+
 
 ## 407 cases are shared among all three data types
 length(Barcode)                  
@@ -89,6 +102,13 @@ GDCdownload(met_query, directory = "Data/GDCdata",                   # Downloadi
 ## Get clinical data
 cli_data <- GDCquery_clinic(project = "TCGA-LIHC",                   # Liver hepatocellular carcinoma project 
                             type = "clinical")                       # Acquire clinical data
+cli_data <- select(cli_data,!where(~ all(is.na(.x))))                # Remove empty columns to parse only through available clinical data
+for(column in colnames(cli_data)){                                   # Remove columns with only "NA" as string
+  if(all(cli_data[, column] == "NA", na.rm = T)){
+    cli_data <- select(cli_data, -column)
+  }
+}
+
 
 ## Select clinical features
 cli_data <- cli_data %>% select(c("bcr_patient_barcode",
