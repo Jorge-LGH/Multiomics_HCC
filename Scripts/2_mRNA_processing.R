@@ -18,50 +18,57 @@ library(ggrepel)                   # Version: 0.9.6
 samples_data <- read.table("Data/samples_data.tsv", header = T, sep='\t')
 
 #--------------------Prepare data-------------------------
-# Get mRNA expression values
+## Get mRNA expression values
 exp_query <- GDCquery(project = "TCGA-LIHC",                         # Liver hepatocellular carcinoma project
                       data.category = "Transcriptome Profiling",     # Refers to RNA
                       data.type = "Gene Expression Quantification",  # Gene expression 
                       workflow.type = "STAR - Counts",               # How reads are set as counts per gene
-                      barcode = samples_data$Barcode)                # Barcode
+                      barcode = samples_data$barcode)                # Barcode
 exp_data <- GDCprepare(exp_query,                                    # Query object
                        directory = "Data/GDCdata/",                  # Directory where files are stored
                        summarizedExperiment = F)                     # Do not create a summarized experiment
 
-# Keep only protein coding RNAs
+#--------------------Initial pre-processing--------------------
+## Keep only protein coding RNAs
 exp_data <- exp_data[which(exp_data$gene_type == "protein_coding"),] # 19,962 genes identified
 
-# Remove rows with no transcript reads 
-exp_data <- exp_data[rowSums(exp_data[,-c("gene_id",                 # 19,507 genes remain
+## Remove rows with no transcript reads 
+exp_data <- exp_data[rowSums(exp_data[,-c("gene_id",                 # 19,498 genes remain
                                           "gene_name", 
                                           "gene_type")]) != 0,]
 
-# Set ensembl gene id as row names
+## Set ensembl gene id as row names
 rownames(exp_data) <- exp_data$gene_id
 
-# Remove ensembl id column as well as the gene name and gene type
+## Remove ensembl id column as well as the gene name and gene type
 exp_data <- dplyr::select(exp_data, -c("gene_id", "gene_name", "gene_type"))
 
-# Keep only unstranded reads
+## Keep only unstranded reads
 keep_cols <- colnames(exp_data)[sapply(colnames(exp_data), function(col){
   strsplit(col, "_")[[1]][1] == "unstranded"})]
 exp_data <- exp_data %>% dplyr::select(keep_cols)
 
-# Remove the "unstranded_" part of the columns' names
+## Remove the "unstranded_" part of the columns' names
 colnames(exp_data) <- unlist(strsplit(colnames(exp_data), "_"))[
   unlist(strsplit(colnames(exp_data), "_")) != "unstranded"]
 
-# Remove the transcript version and only keep ensembl gene id
+## Set column names just as the patient_id
+colnames(exp_data) <- substr(colnames(exp_data), 1, 19)
+
+## Remove the transcript version and only keep ensembl gene id
 rownames(exp_data) <- sapply(strsplit(rownames(exp_data),".",fixed=T),
                              function(x) x[1])
 
-# Remove rows with no transcript reads again
-exp_data <- as.data.frame(exp_data,row.names = rownames(exp_data))
-exp_data <- exp_data[rowSums(exp_data) != 0, , drop = FALSE]
+## Remove samples that are not in the samples' patient_id
+exp_data <- as.data.frame(exp_data, row.names = row.names(exp_data))
+exp_data <- exp_data[,which((colnames(exp_data) %in% samples_data$patient_id))]
+
+## Remove rows with no transcript reads again
+exp_data <- exp_data[rowSums(exp_data) != 0, , drop = FALSE]         # 19,448 genes remain
 
 #--------------------Annotation data----------------------
 # Get annotation data
-mart <- useEnsembl("ensembl", dataset = "hsapiens_gene_ensembl", version = 114)
+mart <- useEnsembl("ensembl", dataset = "hsapiens_gene_ensembl")
 ann_data <- getBM(attributes = c("ensembl_gene_id", 
                                  "percentage_gene_gc_content", 
                                  "gene_biotype",
@@ -73,17 +80,16 @@ ann_data <- getBM(attributes = c("ensembl_gene_id",
                   filters = "ensembl_gene_id", 
                   values=rownames(exp_data), 
                   mart=mart)
-ann_data <- ann_data[which(!duplicated(ann_data$ensembl_gene_id)),]            # Remove duplicated annotations
 ann_data$length <- abs(ann_data$end_position - ann_data$start_position)        # Add length
 
-# Remove non protein coding genes from annotation
-ann_data <- ann_data[which(ann_data$gene_biotype == "protein_coding"),]        # 19,350 genes remain
+## Remove non protein coding genes from annotation
+ann_data <- ann_data[which(ann_data$gene_biotype == "protein_coding"),]        # 19,340 genes remain
 
-# Remove transcripts with no annotation data
-exp_data <- exp_data[which(rownames(exp_data) %in% ann_data$ensembl_gene_id),] # Still 19,350
+## Remove transcripts with no annotation data
+exp_data <- exp_data[which(rownames(exp_data) %in% ann_data$ensembl_gene_id),] # Kept the 19,340
 
 #--------------------Check for biases---------------------
-# Create noiseq object for it to be compatible with selected workflow
+## Create noiseq object for it to be compatible with selected workflow
 noiseqData <- NOISeq::readData(exp_data,
                                factors = samples_data,
                                gc = ann_data[, c("ensembl_gene_id", "percentage_gene_gc_content")],
@@ -92,17 +98,17 @@ noiseqData <- NOISeq::readData(exp_data,
 
 counts_data <- dat(noiseqData, type = "countsbio", factor = "sample_type")
 
-# Expression values for cancer samples and controls
+## Expression values for cancer samples and controls
 png("Figures/mRNA/exp_vals_before_norm.png",width=1000)
 explo.plot(counts_data, plottype = "boxplot")
 dev.off()
 
-# Expression values in CPM for cancer samples and controls
+## Expression values in CPM for cancer samples and controls
 png("Figures/mRNA/exp_vals_bar_before_norm.png",width=1000)
 explo.plot(counts_data, plottype = "barplot")
 dev.off()
 
-# Visualize low CPM values
+## Visualize low CPM values
 cpm_hist <- ggplot(exp_data, aes(x = rowMeans(cpm(exp_data, log = T)))) + 
   geom_histogram(colour = "blue", fill = "lightblue") + xlab("CPM") + 
   ylab("Genes") + 
@@ -112,15 +118,15 @@ cpm_hist
 ggsave("Figures/mRNA/exp_cpm_before_norm.png", plot = cpm_hist)            # Save plot 
 sum(rowMeans(cpm(exp_data, log = T))>0)/nrow(exp_data)*100                 # ~64% genes have CPM>0
 
-# Check for transcript composition bias
-cd_data <- dat(noiseqData, type = "cd", norm = F)                          # Reference sample is: TCGA-ZS-A9CG-01A-11R-A37K-07
-table(cd_data@dat$DiagnosticTest[, "Diagnostic Test"])                     # 374 Failed and 32 Passed (01-08-2025)
+## Check for transcript composition bias
+cd_data <- dat(noiseqData, type = "cd", norm = F)                          # Reference sample is: TCGA-2V-A95S-01A-11
+table(cd_data@dat$DiagnosticTest[, "Diagnostic Test"])                     # 332 Failed and 21 Passed (01-08-2025)
 
 png("Figures/mRNA/exp_transcript_bias_before_norm.png",width=1000)
 explo.plot(cd_data, samples = sample(1:ncol(exp_data),10))                 # The result clearly shows composition bias
 dev.off()
 
-# Check for GC bias
+## Check for GC bias
 # The results show a little effect on expression values based on the GC content.The fit for the cancer samples
 # is 51.06% with a p value of 7.5e-09. The fit for the controls is of 37.71% and a p value of 4e-05
 gc_content <- dat(noiseqData, type = "GCbias", k = 0, factor = "sample_type")
@@ -144,6 +150,10 @@ png("Figures/mRNA/exp_batch_effect_before_norm.png",width=1000)
 explo.plot(myPCA, factor = "sample_type")
 dev.off()
 
+#--------------------Descriptive plots-------------------------
+
+
+
 #--------------------Solve biases-------------------------
 # Filter genes with low counts (CPM) < 0
 exp_data <- filtered.data(exp_data,                   # Data to filter    
@@ -152,13 +162,13 @@ exp_data <- filtered.data(exp_data,                   # Data to filter
                           method = 1,                 # Filtering method (CPM)
                           cpm = 0,                    # CPM threshold
                           p.adj = "fdr")              # Correction method
-dim(exp_data)                                         # 9,801 genes remain
+dim(exp_data)                                         # 9,840 genes remain
 
 # Filter annotation data
 ann_data <- ann_data[which(ann_data$ensembl_gene_id %in% rownames(exp_data)),]
 
 # Column names must match
-colnames(exp_data) <- samples_data$Barcode
+#colnames(exp_data) <- samples_data$barcode
 
 # Solve GC and length bias using cqn (conditional quantile normalization)
 counts <- as.matrix(exp_data)                         # Raw counts 

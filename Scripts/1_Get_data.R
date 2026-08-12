@@ -6,8 +6,8 @@
 library(TCGAbiolinks)            # Version: 2.36.0
 library(SummarizedExperiment)    # Version: 1.48.1
 library(tidyverse)               # Version: 2.0.0
-library(RColorBrewer)
-library(VennDiagram)
+library(RColorBrewer)            # Version: 1.1.3
+library(VennDiagram)             # Version: 1.8.2
 
 #--------------------Query preparation--------------------
 # This section is in charge of making the queries to the TCGA database
@@ -45,15 +45,13 @@ table(exp_res$sample_type) # (371 primary, 3 recurrent, and 50 normal) (08-07-20
 ## Keep only primary and normal
 exp_res <- filter(exp_res, sample_type != "Recurrent Tumor")
 
-## Extract initial samples' names
-cases <- exp_res$cases
-
-## Crop the samples' ids
-cases <- substr(cases, 1, 19)
+## Extract initial samples' names (the first 19 characters are shared amongst all three data types)
+cases <- substr(exp_res$cases, 1, 19)
 
 ## Check how many are of the cases are shared among the three data types
-Barcode <- cases[cases %in% substr(met_res$cases, 1, 19) & 
+cases <- cases[cases %in% substr(met_res$cases, 1, 19) & 
                    cases %in% substr(mir_res$cases, 1 ,19)]
+length(cases)                                                              # 407 samples shared across all thre data types  
 
 ## Plotting which samples are shared amongst all three data types
 venn.diagram(x = list(cases, substr(met_res$cases, 1, 19), substr(mir_res$cases, 1 ,19)),
@@ -64,37 +62,6 @@ venn.diagram(x = list(cases, substr(met_res$cases, 1, 19), substr(mir_res$cases,
              output = T,
                       lwd = 3,
                       col = brewer.pal(3, "Set1"))
-
-
-## 407 cases are shared among all three data types
-length(Barcode)                  
-
-#--------------------Data download------------------------
-# This section is in charge of downloading the queries to the TCGA database. The barcode tells the TCGA
-# platform which specific samples I want to request.
-## mRNA
-exp_query <- GDCquery(project = "TCGA-LIHC",                         # Liver hepatocellular carcinoma project
-                      data.category = "Transcriptome Profiling",     # Refers to RNA
-                      data.type = "Gene Expression Quantification",  # Gene expression 
-                      workflow.type = "STAR - Counts",               # How reads are set as counts per gene
-                      barcode = Barcode)                             # Barcode
-GDCdownload(exp_query, directory = "Data/GDCdata")                   # Downloading files
-
-## miRNA
-mir_query <- GDCquery(project = "TCGA-LIHC",                         # Liver hepatocellular carcinoma project
-                      data.category = "Transcriptome Profiling",     # Refers to RNA
-                      data.type = "miRNA Expression Quantification", # miRNA gen expression
-                      barcode = Barcode)                             # Barcode
-GDCdownload(mir_query, directory = "Data/GDCdata")                   # Downloading files
-
-## Methylation data
-met_query <- GDCquery(project = "TCGA-LIHC",                         # Liver hepatocellular carcinoma project
-                      data.category = "DNA Methylation",             # DNA methylation data
-                      platform = "Illumina Human Methylation 450",   # CpG detection platform
-                      data.type = "Methylation Beta Value",          # Data type
-                      barcode = Barcode)                             # Barcode
-GDCdownload(met_query, directory = "Data/GDCdata",                   # Downloading files. I had to select a "files
-            files.per.chunk = 50)                                    # per chunk" argument due to the data's size
 
 #--------------------Clinical data------------------------
 # Available clinical data is also important as it can provide more insight into each sample. Not every
@@ -109,46 +76,72 @@ for(column in colnames(cli_data)){                                   # Remove co
   }
 }
 
-
-## Select clinical features
+## Select clinical features based on availability and interest
 cli_data <- cli_data %>% select(c("bcr_patient_barcode",
+                                  "primary_diagnosis",
                                   "synchronous_malignancy",
                                   "prior_malignancy",
+                                  "age_at_diagnosis",
+                                  "child_pugh_classification",
                                   "prior_treatment",
-                                  "tumor_grade",
+                                  "follow_ups_disease_response",
+                                  "tumor_grade",                     # Numeric value to express the degree of abnormality of cancer cells, a measure of differentiation and aggressiveness.
+                                  "ajcc_pathologic_stage",           # The extent of a cancer, especially whether the disease has spread from the original site to other parts of the body based on AJCC staging criteria.
+                                  "ajcc_staging_system_edition",     # AJCC version
                                   "race",
                                   "age_at_index",
-                                  "gender",
+                                  "sex_at_birth",
                                   "vital_status"))
 
-## Format selected data
-cli_data[which(cli_data$synchronous_malignancy == "Not Reported"),]$synchronous_malignancy <- "NA" # Change not reported to NA
-cli_data[which(cli_data$prior_malignancy == "not reported"),]$prior_malignancy <- "NA"             # Change not reported to NA
-cli_data[which(cli_data$race == "not reported"),]$race <- "Unknown"                                # Change not reported to Unknown
+## Format race's data
+cli_data[which(cli_data$race == "not reported"),]$race <- "Unknown"                                # Change "not reported" to "Unknown"
 
-## Check for missing data or duplicates
-sum(substr(Barcode, 1, 12) %in%                                               # All 407 samples are present in the clinical data
-      cli_data$bcr_patient_barcode)
+#--------------------Exclusion criteria--------------------
+## First remove from clinical data
+cli_data <- filter(cli_data, primary_diagnosis == "Hepatocellular carcinoma, NOS")                 # Only keep NOS subtype
+cli_data <- cli_data[which(!cli_data$prior_treatment == "Yes"),]                                   # Remove samples that had treatment previous to being samapled
+cli_data <- cli_data[which(cli_data$prior_malignancy == "no"),]                                    # Only keep patients with certainty they haven't had aprior malignancies
+cli_data <- cli_data[which(cli_data$synchronous_malignancy == "No"),]                              # Remove patients with synchronous malignancies
 
-## Create data frame and combine data
-sample_data <- data.frame(cbind(Barcode,                                      # Barcode, patient id, sample type
-                                substr(Barcode, 1, 12),
-                                exp_res[substr(exp_res$cases, 1, 19) %in% Barcode,]$sample_type))
-## Duplicated samples
-# Some samples have tumor and control tissues, so it helps to separate and then integrate it again
-duplicated_samples <- sample_data[which(duplicated(sample_data$V2)),]
-unique_samples <- sample_data[which(!duplicated(sample_data$V2)),]
+## Move on to samples, both tumor and control tissues
+cases <- cases[substr(cases, 1, 12) %in% cli_data$bcr_patient_barcode]                             # 354 total samples remain
 
-## Merge clinical data
-sample_data <- merge(unique_samples, cli_data, by.x="V2", by.y="bcr_patient_barcode")
-duplicated_data <- merge(duplicated_samples, cli_data, by.x="V2", by.y="bcr_patient_barcode")
+## Create samples' data frame
+samples_data <- data.frame(cbind(substr(cases, 1, 12),                                             # Barcode, patient id, sample type
+                                cases,
+                                exp_res[substr(exp_res$cases, 1, 19) %in% cases,]$sample_type))
+colnames(samples_data) <- c("barcode", "patient_id", "sample_type")                                # Rename columns
 
-# Every sample with its clinical metadata combined
-samples_data <- rbind(sample_data, duplicated_data)                           # Merge data
-samples_data <- samples_data[order(samples_data$Barcode, decreasing = TRUE),] # Sort by barcode
-rownames(samples_data) <- c(1:nrow(samples_data))                             # re-index dataframe
-colnames(samples_data)[c(1,3)] <- c("patient_id", "sample_type")              # Change column names
+## Merge with clinical data
+samples_data <- merge(samples_data, cli_data, by.x="barcode", by.y="bcr_patient_barcode")          # 354 total samples
+table(samples_data$sample_type)                                                                    # 315 tumor samples and 39 solid tissue normals
 
-#--------------------Save objects-------------------------
-write.table(samples_data,"Data/samples_data.tsv",sep='\t',quote=F,row.names=F)
+#--------------------Save object-------------------------
+write.table(samples_data, "Data/samples_data.tsv", sep='\t', quote=F, row.names=F)
 
+#--------------------Data download------------------------
+# This section is in charge of downloading the queries to the TCGA database. The barcode tells the TCGA
+# platform which specific samples I want to request.
+## mRNA
+exp_query <- GDCquery(project = "TCGA-LIHC",                         # Liver hepatocellular carcinoma project
+                      data.category = "Transcriptome Profiling",     # Refers to RNA
+                      data.type = "Gene Expression Quantification",  # Gene expression 
+                      workflow.type = "STAR - Counts",               # How reads are set as counts per gene
+                      barcode = samples_data$barcode)                # Barcode
+GDCdownload(exp_query, directory = "Data/GDCdata")                   # Downloading files
+
+## miRNA
+mir_query <- GDCquery(project = "TCGA-LIHC",                         # Liver hepatocellular carcinoma project
+                      data.category = "Transcriptome Profiling",     # Refers to RNA
+                      data.type = "miRNA Expression Quantification", # miRNA gen expression
+                      barcode = samples_data$barcode)                # Barcode
+GDCdownload(mir_query, directory = "Data/GDCdata")                   # Downloading files
+
+## Methylation data
+met_query <- GDCquery(project = "TCGA-LIHC",                         # Liver hepatocellular carcinoma project
+                      data.category = "DNA Methylation",             # DNA methylation data
+                      platform = "Illumina Human Methylation 450",   # CpG detection platform
+                      data.type = "Methylation Beta Value",          # Data type
+                      barcode = samples_data$barcode)                # Barcode
+GDCdownload(met_query, directory = "Data/GDCdata",                   # Downloading files. I had to select a "files
+            files.per.chunk = 50)                                    # per chunk" argument due to the data's size
