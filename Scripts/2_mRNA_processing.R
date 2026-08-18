@@ -86,7 +86,7 @@ ann_data$length <- abs(ann_data$end_position - ann_data$start_position)        #
 ann_data <- ann_data[which(ann_data$gene_biotype == "protein_coding"),]        # 19,340 genes remain
 
 ## Remove transcripts with no annotation data
-exp_data <- exp_data[which(rownames(exp_data) %in% ann_data$ensembl_gene_id),] # Kept the 19,340
+exp_data <- exp_data[which(rownames(exp_data) %in% ann_data$ensembl_gene_id),] # Kept the 19,340 from the annotation data
 
 #--------------------Check for biases---------------------
 ## Create noiseq object for it to be compatible with selected workflow
@@ -127,16 +127,16 @@ explo.plot(cd_data, samples = sample(1:ncol(exp_data),10))                 # The
 dev.off()
 
 ## Check for GC bias
-# The results show a little effect on expression values based on the GC content.The fit for the cancer samples
-# is 51.06% with a p value of 7.5e-09. The fit for the controls is of 37.71% and a p value of 4e-05
+# The results show the effect on expression values based on the GC content.The fit for the cancer samples
+# is 58.77% with a p value of 1.2e-11. The fit for the controls is of 51.27% and a p value of 6.4e-09
 gc_content <- dat(noiseqData, type = "GCbias", k = 0, factor = "sample_type")
 png("Figures/mRNA/exp_gc_bias_before_norm.png",width=1000)
 explo.plot(gc_content)  
 dev.off()
 
 # Check for length bias
-# The results show a little effect on expression values based on the length. The fit for the cancer samples is 53.07% 
-# with a p value of 5.2e-10. The fit for the controls is of 52.58% and a p value of 9.7e-07
+# The results show the effect on expression values based on the length. The fit for the cancer samples is 58.75% 
+# with a p value of 3.5e-12. The fit for the controls is of 56.51% and a p value of 2.8e-11
 len_bias <- dat(noiseqData, k = 0, type = "lengthbias", factor = "sample_type")
 png("Figures/mRNA/exp_length_bias_before_norm.png",width=1000)
 explo.plot(len_bias)
@@ -151,8 +151,21 @@ explo.plot(myPCA, factor = "sample_type")
 dev.off()
 
 #--------------------Descriptive plots-------------------------
+## Descriptive data per sample
+### Create empty data frame
+summary_samples <- data.frame(
+  matrix(NA, 
+    nrow = ncol(exp_data), 
+    ncol= 6), 
+  row.names = colnames(exp_data))
 
+### Add summary informatio per sample
+for(i in 1:ncol(exp_data)){
+  summary_samples[i,] <- summary(exp_data[,i])
+}
 
+### Rename columns
+colnames(summary_samples) <- c("Min.", "1st Qu.", "Median", "Mean 3rd Qu.", "Max.")
 
 #--------------------Solve biases-------------------------
 # Filter genes with low counts (CPM) < 0
