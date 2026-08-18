@@ -41,9 +41,13 @@ met_res <- getResults(met_query)
 # Additionally, the work will only focus on primary tumors and any available controls, so filtering is required.
 ## Check for sample types
 table(exp_res$sample_type) # (371 primary, 3 recurrent, and 50 normal) (08-07-2025)
+table(mir_res$sample_type) # (372 primary, 3 recurrent, and 50 normal) (08-07-2025)
+table(met_res$sample_type) # (1131 primary, 9 recurrent, and 150 normal) (08-07-2025)
 
 ## Keep only primary and normal
 exp_res <- filter(exp_res, sample_type != "Recurrent Tumor")
+mir_res <- filter(mir_res, sample_type != "Recurrent Tumor")
+met_res <- filter(met_res, sample_type != "Recurrent Tumor")
 
 ## Extract initial samples' names (the first 19 characters are shared amongst all three data types)
 cases <- substr(exp_res$cases, 1, 19)
@@ -51,7 +55,7 @@ cases <- substr(exp_res$cases, 1, 19)
 ## Check how many are of the cases are shared among the three data types
 cases <- cases[cases %in% substr(met_res$cases, 1, 19) & 
                    cases %in% substr(mir_res$cases, 1 ,19)]
-length(cases)                                                              # 407 samples shared across all thre data types  
+length(cases)                                                              # 407 samples shared across all three data types  
 
 ## Plotting which samples are shared amongst all three data types
 venn.diagram(x = list(cases, substr(met_res$cases, 1, 19), substr(mir_res$cases, 1 ,19)),
