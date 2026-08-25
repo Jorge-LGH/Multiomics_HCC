@@ -26,7 +26,7 @@ met_query <-  GDCquery(project = "TCGA-LIHC",                        # Liver hep
                        data.category = "DNA Methylation",            # DNA methylation data
                        platform = "Illumina Human Methylation 450",  # CpG detection platform
                        data.type = "Methylation Beta Value",         # Data type
-                       barcode = samples_data$Barcode)               # Barcode
+                       barcode = samples_data$barcode)               # Barcode
 
 # The resulting object already has the methylation beta values by sample and probe as row names
 met_data <- GDCprepare(met_query,                                    # Query object
@@ -35,7 +35,7 @@ met_data <- GDCprepare(met_query,                                    # Query obj
 
 #--------------------QC-----------------------------------
 # Starting object qualities
-dim(met_data)                                                        # 485,577 probes across 407 samples
+dim(met_data)                                                        # 485,577 probes across 363 samples
 sum(is.na(assay(met_data)))                                          # 31,589,946 NA's (need to impute values after some filtering)
 sum(colSums(assay(met_data), na.rm = T) == 0)                        # No empty columns (Should worry if it wasn't the case)
 sum(rowSums(assay(met_data), na.rm = T) == 0)                        # There are 64,213 rows with only 0's if we drop the NA's
