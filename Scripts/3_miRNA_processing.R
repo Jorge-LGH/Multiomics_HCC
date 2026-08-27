@@ -18,41 +18,51 @@ library(ggrepel)                   # Version: 0.9.6
 samples_data <- read.table("Data/samples_data.tsv", header = T, sep='\t')
 
 #--------------------Prepare data-------------------------
-# Get miRNA expression values
+## Get miRNA expression values
 mir_query <- GDCquery(project = "TCGA-LIHC",                         # Liver hepatocellular carcinoma project
                       data.category = "Transcriptome Profiling",     # Refers to RNA
                       data.type = "miRNA Expression Quantification", # Gene expression 
-                      barcode = samples_data$Barcode)                # Barcode
+                      barcode = samples_data$barcode)                # Barcode
 mir_data <- GDCprepare(mir_query,                                    # Query object
                        directory = "Data/GDCdata/",                  # Directory where files are stored
                        summarizedExperiment = F)                     # Do not create a summarized experiment
 
-# Set miRNA-ID as row names
+## Set miRNA-ID as row names
 rownames(mir_data) <- mir_data$miRNA_ID
 
-# Keep only raw counts for each sample
+## Keep only raw counts for each sample
 keep_cols <- colnames(mir_data)[sapply(colnames(mir_data), function(col){
   strsplit(col, "_")[[1]][1] == "read"})]
 mir_data <- mir_data %>% dplyr::select(keep_cols)
+dim(mir_data)                                                        # 1,881 miRNAs across the 367 samples
 
-# Change column names to barcode
-colnames(mir_data) <- samples_data$Barcode
+## Make column names just the patient id
+colnames(mir_data) <- unlist(strsplit(colnames(mir_data), 
+                        "_"))[unlist(strsplit(colnames(mir_data), "_")) != 
+                          "read"] %>% .[!. %in% "count"]  
 
-# Remove genes with no expression among every sample
+## Remove genes with no expression among every sample
 dim(mir_data)                                                        # 1,881 miRNA genes before filtering (11-08-2025)
-mir_data <- mir_data[rowSums(mir_data) != 0, , drop = FALSE]         # 1,526 genes remain (11-08-2025)
+mir_data <- mir_data[rowSums(mir_data) != 0, , drop = FALSE]         # 1,517 genes remain (27-08-2026)
 
 #--------------------Annotation data----------------------
 # Get annotation data
-mart <- useEnsembl("ensembl", dataset = "hsapiens_gene_ensembl", version = 114)  # Data set to use
-ann_data <- getBM(attributes = c("mirbase_id",                                   # mirbase ID
-                                 "percentage_gene_gc_content",                   # miRNA GC content
+mart <- useEnsembl("ensembl", dataset = "hsapiens_gene_ensembl")            # Data set to use
+ann_data <- getBM(attributes = c("mirbase_id",                              # mirbase ID
+                                 "percentage_gene_gc_content",              # miRNA GC content
                                  "start_position",
                                  "chromosome_name",
                                  "end_position"),
                   mart=mart)
 ann_data$length <- ann_data$end_position - ann_data$start_position          # Add miRNA length
-ann_data <- ann_data[which(ann_data$mirbase_id %in% rownames(mir_data)),]   # Keep annotation of present miRNAs only (1,609 genes 12-08-2025)
+ann_data <- ann_data[which(ann_data$mirbase_id %in% rownames(mir_data)),]   # Keep annotation of present miRNAs only (1,602 genes 27-08-2026)
+dim(ann_data[which(duplicated(ann_data$mirbase_id)),])                      # There are 122 dupliacted mirbase id's
+sum(rownames(mir_data) %in%                                                 # 98 out of the 112 are in the miRNA data
+  ann_data[which(duplicated(ann_data$mirbase_id)),]$mirbase_id)
+
+# Since 98 out of the 112 repeated mirbase id's are in the mirdata, we have to deal with that information
+# Many of the repeats just vary around 1 or 2 nuecleotides
+
 ann_data <- ann_data[which(!duplicated(ann_data$mirbase_id)),]              # Remove duplicated miRNAs (1,499 miRNAs remain 12-06-2025)
 mir_data <- mir_data[which(rownames(mir_data) %in% ann_data$mirbase_id),]   # Keep only miRNAs with annotation (Same 1,499 miRNAs)
 
