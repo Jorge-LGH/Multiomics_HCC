@@ -150,22 +150,30 @@ png("Figures/mRNA/exp_batch_effect_before_norm.png",width=1000)
 explo.plot(myPCA, factor = "sample_type")
 dev.off()
 
-#--------------------Descriptive plots-------------------------
+#--------------------Descriptive plot-------------------------
 ## Descriptive data per sample
 ### Create empty data frame
-summary_samples <- data.frame(
-  matrix(NA, 
-    nrow = ncol(exp_data), 
-    ncol= 6), 
+samples_summary <- data.frame(matrix(NA, 
+  nrow = ncol(exp_data), 
+  ncol= 6),
   row.names = colnames(exp_data))
 
 ### Add summary informatio per sample
 for(i in 1:ncol(exp_data)){
-  summary_samples[i,] <- summary(exp_data[,i])
+  samples_summary[i,] <- summary(exp_data[,i])
 }
 
 ### Rename columns
-colnames(summary_samples) <- c("Min.", "1st Qu.", "Median", "Mean 3rd Qu.", "Max.")
+colnames(samples_summary) <- c("Min.", "1st Qu.", "Median", "Mean", "3rd Qu.", "Max.")
+
+## Violin plot
+log(samples_summary + 1) %>%
+  pivot_longer(cols = colnames(samples_summary)) %>%
+  ggplot(., aes(x = reorder(name, value), y= value, fill= name)) + 
+  geom_boxplot() + ylim(0,17) +
+  ylab("log reads per sample") + xlab(" ") + 
+  labs(dictionary = c(name = "Measures")) +
+  theme_classic()
 
 #--------------------Solve biases-------------------------
 # Filter genes with low counts (CPM) < 0
