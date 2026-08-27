@@ -194,12 +194,12 @@ ann_data <- ann_data[which(ann_data$ensembl_gene_id %in% rownames(exp_data)),]
 # Solve GC and length bias using cqn (conditional quantile normalization)
 counts <- as.matrix(exp_data)                         # Raw counts 
 lengths <- ann_data$length                            # Gene lengths 
-gc <- ann_data$percentage_gene_gc_content             # GC content 
+gc_content <- ann_data$percentage_gene_gc_content     # GC content 
 
 # Apply CQN 
 cqn_res <- cqn(counts = counts,                       # Expression counts
                lengths = lengths,                     # Gene length
-               x = gc,                                # Covariate to remove
+               x = gc_content,                        # Covariate to remove
                sizeFactors = colSums(counts),         # Library sizes
                verbose = T)
 
@@ -213,16 +213,16 @@ cqn_noiseq <- NOISeq::readData(data = exp_data,
                                length = ann_data[, c("ensembl_gene_id", "length")])
 
 # Batch effect correction
-cqn_arsyn <- ARSyNseq(cqn_noiseq, 
-                      factor = "sample_type", 
-                      batch = F,  
-                      norm = "n", 
-                      logtransf = T)
+cqn_arsyn <- ARSyNseq(cqn_noiseq,                                    # Object
+                      factor = "sample_type",                        # Factor containing batch information
+                      batch = F,                                     # F 'cause the sample type is not a bacth in itself
+                      norm = "n",                                    # n because it has already been normalized
+                      logtransf = T)                                 # T because we don't want a log-transform
 
 # Check batch effect removal visually
 myPCA <- dat(cqn_arsyn, type = "PCA", norm = T, logtransf = T)       # Perform PCA
 png("Figures/mRNA/exp_batch_effect_after_norm.png",width=1000)
-explo.plot(myPCA, factor = "sample_type")                            # PCA1 = 13%, PCA2 = 1%
+explo.plot(myPCA, factor = "sample_type")                            # PCA1 = 6%, PCA2 = 1%
 dev.off()
 
 # New NOISeq object to check for GC and length bias
@@ -234,18 +234,21 @@ new_noiseq <- NOISeq::readData(cqn_arsyn,
 
 new_counts_data <- dat(new_noiseq, type = "countsbio",               # Will check expression values
                        factor = "sample_type", norm = T)
+
 png("Figures/mRNA/exp_val_bar_after_norm.png",width=1000)
 explo.plot(new_counts_data, plottype = "boxplot")                    # Expression values
 dev.off()
 
 # Check for GC content bias
 new_gc_content <- dat(new_noiseq, type = "GCbias", k = 0, factor = "sample_type", norm = T)
+# Now it is R2=32.75% and p=0.016 for tumor and R2=28.71% and p=0.4 
 png("Figures/mRNA/exp_gc_bias_after_norm.png",width=1000)
 explo.plot(new_gc_content)  
 dev.off()
 
 # Check for length bias
 new_len_bias <- dat(new_noiseq, k = 0, type = "lengthbias", factor = "sample_type", norm = T)
+# Now it is R2=43.08% and p=0.00096 for tumor and R2=48.39% and p=0.00017
 png("Figures/mRNA/exp_length_bias_after_norm.png",width=1000)
 explo.plot(new_len_bias)
 dev.off()
@@ -255,31 +258,33 @@ write.table(new_noiseq@assayData$exprs,"Data/norm_exp_data.tsv",sep='\t',row.nam
 
 #--------------------Differential expression analysis-----
 # Differential expression analysis performed with DESeq2
-# Create DESeq object
+## Create DESeq object
 diff_des <- DESeqDataSetFromMatrix(countData = counts,            # Un-normalized counts matrix
                                    colData = samples_data,        # Meta data
                                    design = ~ sample_type)        # Variable of interest
 diff_des$sample_type <- relevel(diff_des$sample_type,             # Set the control samples as the reference
                                 ref = "Solid Tissue Normal")
 
-# Perform differential expression analysis
+## Perform differential expression analysis
 diff_anl <- DESeq(diff_des)
 
-# Extract results
+## Extract results
 diff_res <- results(diff_anl)
 
-# Make plot
+## Make plot
 diff_res <- as.data.frame(diff_res)
 
-## Assign labels if unchanged, up-regulated or down-regulated 
+### Assign labels if unchanged, up-regulated or down-regulated 
 diff_res <- diff_res %>% mutate(Expression = case_when(log2FoldChange >= 1 & padj <= 0.05 ~ "Up-regulated",
                                                        log2FoldChange <= -1 & padj <= 0.05 ~ "Down-regulated",
                                                        TRUE ~ "Unchanged"))
 
-# Check for differential expression results
+#### Check for differential expression results
 table(diff_res$Expression)
+# Down-regulated      Unchanged   Up-regulated 
+#            108           9677             55 
 
-## Extract ID from 50 top and 50 bottom differentially expressed
+### Extract ID from 50 top and 50 bottom differentially expressed
 bot_50_genes <- diff_res[which(
   diff_res$Expression == "Down-regulated"),][order(diff_res[which(
     diff_res$Expression == "Down-regulated"),]$log2FoldChange, decreasing = F), ] %>% head(.,50)
@@ -309,6 +314,46 @@ ggplot(diff_res, aes(log2FoldChange, -log(padj,10))) +
                    nudge_x = 0.5)
 dev.off()
 
+## More relaxed differential expression anaylisis
+diff_res <- results(diff_anl)
+diff_res <- as.data.frame(diff_res)
+### Assign labels if unchanged, up-regulated or down-regulated based on lfc  of 0.5 instead of 1
+diff_res_relaxed <- diff_res %>% 
+  mutate(Expression = case_when(log2FoldChange >= 0.5 & padj <= 0.05 ~ "Up-regulated",
+                                log2FoldChange <= -0.5 & padj <= 0.05 ~ "Down-regulated",
+                                TRUE ~ "Unchanged"))
+table(diff_res_relaxed$Expression)
+# Down-regulated      Unchanged   Up-regulated 
+#            792           8147            901 
+bot_50_genes_relaxed <- diff_res_relaxed[which(
+  diff_res_relaxed$Expression == "Down-regulated"),][order(diff_res_relaxed[which(
+    diff_res_relaxed$Expression == "Down-regulated"),]$log2FoldChange, decreasing = F), ] %>% head(.,50)
+
+top_50_genes_relaxed <- diff_res_relaxed[which(
+  diff_res_relaxed$Expression == "Up-regulated"),][order(diff_res_relaxed[which(
+    diff_res_relaxed$Expression == "Up-regulated"),]$log2FoldChange, decreasing = T), ] %>% head(.,50)
+
+png("Figures/mRNA/exp_diff_relaxed_plot.png",width=1000)
+ggplot(diff_res_relaxed, aes(log2FoldChange, -log(padj,10))) +
+  geom_point(aes(color = Expression), size = 1.5, alpha=.7) +
+  scale_color_manual(values = c("dodgerblue3", "gray50", "firebrick3")) +
+  guides(colour = guide_legend(override.aes = list(size=1.5))) +
+  labs(x = "log_2(FC)", y = "-log10(adj. p-Value)", title = "Differential Expression") + 
+  geom_hline(yintercept=0.05, linetype="dashed", color = "black") +
+  geom_vline(xintercept=c(-0.5,0.5), linetype="dashed", color = "black") +
+  theme_bw() +
+  geom_label_repel(data=subset(diff_res_relaxed,rownames(diff_res_relaxed) %in% 
+                                 rownames(top_50_genes[1:10,]) | 
+                                 rownames(diff_res_relaxed) %in% rownames(bot_50_genes[1:10,])),
+                   aes(log2FoldChange, -log(padj,10), 
+                       label = rownames(subset(diff_res_relaxed,rownames(diff_res_relaxed) %in%
+                                                 rownames(top_50_genes[1:10,]) |
+                                                 rownames(diff_res_relaxed) %in% rownames(bot_50_genes[1:10,])))),
+                   arrow = arrow(length = unit(0.02, "npc")),
+                   nudge_x = 0.5)
+dev.off()
+
 #--------------------Save objects-------------------------
-write.table(diff_res,"Data/exp_diff_exp.tsv",sep='\t',row.names=T)
+write.table(diff_res,"Data/exp_diff.tsv",sep='\t',row.names=T)
+write.table(diff_res_relaxed,"Data/exp_diff_relaxed.tsv",sep='\t',row.names=T)
 
