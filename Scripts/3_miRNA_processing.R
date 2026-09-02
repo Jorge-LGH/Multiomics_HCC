@@ -56,15 +56,80 @@ ann_data <- getBM(attributes = c("mirbase_id",                              # mi
                   mart=mart)
 ann_data$length <- ann_data$end_position - ann_data$start_position          # Add miRNA length
 ann_data <- ann_data[which(ann_data$mirbase_id %in% rownames(mir_data)),]   # Keep annotation of present miRNAs only (1,602 genes 27-08-2026)
-dim(ann_data[which(duplicated(ann_data$mirbase_id)),])                      # There are 122 dupliacted mirbase id's
+dim(ann_data[which(duplicated(ann_data$mirbase_id)),])                      # There are 112 dupliacted mirbase id's
 sum(rownames(mir_data) %in%                                                 # 98 out of the 112 are in the miRNA data
   ann_data[which(duplicated(ann_data$mirbase_id)),]$mirbase_id)
 
 # Since 98 out of the 112 repeated mirbase id's are in the mirdata, we have to deal with that information
-# Many of the repeats just vary around 1 or 2 nuecleotides
+## Create data frame with duplicated mirbase_id miRNAs
+duplicated_mirnas <- ann_data %>%
+  group_by(mirbase_id) %>%
+  filter(n() > 1) %>%
+  ungroup()
 
-ann_data <- ann_data[which(!duplicated(ann_data$mirbase_id)),]              # Remove duplicated miRNAs (1,499 miRNAs remain 12-06-2025)
-mir_data <- mir_data[which(rownames(mir_data) %in% ann_data$mirbase_id),]   # Keep only miRNAs with annotation (Same 1,499 miRNAs)
+# We apparently have a couple of scenarios with each duplicate so we'll be separating them based on their characteristics
+# 1.- Same name and composition/length but different coordinates: collapse them
+# 2.- Same name but different composition/length: check individually 
+# 3.- Have different ID's but same composition/length: check
+## Group by cases
+duplicated_categories <- duplicated_mirnas %>%
+  group_by(mirbase_id) %>%
+  summarise(n_annotations = n(),
+    n_GC = n_distinct(percentage_gene_gc_content),
+    n_length = n_distinct(length),
+    n_start = n_distinct(start_position),
+    n_end = n_distinct(end_position),
+    n_chr = n_distinct(chromosome_name),
+    .groups = "drop") %>%
+  mutate(category = case_when(n_GC == 1 & n_length == 1 ~ "Collapse",
+                              n_GC > 1 | n_length > 1 ~ "Inspect",
+                              TRUE ~ "Other"))
+
+# The ones with different names but the exact same rest are from different loci but produce the same miRNA
+## Group by annotation
+same_annotation <- duplicated_mirnas %>%
+  group_by(chromosome_name,
+           start_position,
+           end_position,
+           percentage_gene_gc_content,
+           length) %>%
+  filter(n_distinct(mirbase_id) > 1) %>%
+  arrange(chromosome_name,
+          start_position,
+          mirbase_id) %>%
+  ungroup()
+
+## Create summary of duplicates in miRNAs to assess them by case type
+duplicate_summary <- duplicated_categories %>%
+  left_join(same_annotation %>%
+      distinct(mirbase_id) %>%
+      mutate(same_annotation = TRUE),
+             by = "mirbase_id") %>%
+  mutate(same_annotation = replace_na(same_annotation, FALSE),
+         category = case_when(same_annotation ~ "Annotation relationship",
+                              n_GC == 1 & n_length == 1 ~ "Collapse",
+                              n_GC > 1 | n_length > 1 ~ "Inspect"))
+
+## Separate miRNAs which will be collapsed
+collapse_mirnas <- duplicated_mirnas %>%
+  semi_join(duplicate_summary %>%
+    filter(category == "Collapse"),
+           by = "mirbase_id")
+collapse_mirnas
+
+## Separate miRNAs that will have to be checked manually
+inspect_mirnas <- duplicated_mirnas %>%
+  semi_join(duplicate_summary %>%
+      filter(category == "Inspect"),
+             by = "mirbase_id")
+inspect_mirnas
+
+## Separate miRNAs that have the same annotation but need checking
+same_annotation_mirnas <- duplicated_mirnas %>%
+  semi_join(duplicate_summary %>%
+      filter(category == "Annotation relationship"),
+             by = "mirbase_id")
+same_annotation_mirnas
 
 #--------------------Check for biases---------------------
 # Create noiseq object for it to be compatible with selected workflow
